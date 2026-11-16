@@ -491,6 +491,30 @@
     };
     let pinned = true;
     const browserPlayer = document.getElementById('browserPlayer');
+    const LOCAL_BRIDGE = 'http://127.0.0.1:8091';
+
+    function webSpeechFallback(text) {
+      if (!('speechSynthesis' in window) || !text) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'pt-BR';
+      u.rate = 1.1;
+      u.pitch = 0.85;
+      u.onstart = () => { stateCache.speaking = true; };
+      u.onend = () => { stateCache.speaking = false; };
+      window.speechSynthesis.speak(u);
+    }
+
+    async function apiFetch(path, opts = {}) {
+      // Se estiver aberto pelo link do Render na nuvem, tenta primeiro a ponte direta com o motor local do PC (127.0.0.1:8091)
+      if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        try {
+          const r = await fetch(LOCAL_BRIDGE + path, opts);
+          if (r.ok) return r;
+        } catch (e) {}
+      }
+      return await fetch(path, opts);
+    }
 
     const cvs = document.getElementById('miniScope');
     const c = cvs.getContext('2d');
@@ -561,7 +585,7 @@
       const kv = sel.value;
       const kp = opt ? (opt.dataset.pitch || '-2Hz') : '-2Hz';
       const kr = opt ? (opt.dataset.rate || '+12%') : '+12%';
-      await fetch('/api/config', {
+      await apiFetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kilo_voice: kv, kilo_pitch: kp, kilo_rate: kr })
@@ -571,7 +595,7 @@
     async function toggleFlag(key) {
       stateCache[key] = !stateCache[key];
       renderPills();
-      await fetch('/api/config', {
+      await apiFetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [key]: stateCache[key] })
@@ -601,7 +625,7 @@
       const r = parseInt(document.getElementById('rngRate').value, 10);
       const p = parseInt(document.getElementById('rngPitch').value, 10);
       const v = parseInt(document.getElementById('rngVol').value, 10);
-      await fetch('/api/config', {
+      await apiFetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -614,38 +638,43 @@
     }
 
     async function readLast() {
-      await fetch('/api/read_last', { method: 'POST' });
+      await apiFetch('/api/read_last', { method: 'POST' });
     }
 
     async function readLastKilo() {
-      await fetch('/api/read_last_kilo', { method: 'POST' });
+      await apiFetch('/api/read_last_kilo', { method: 'POST' });
     }
 
     async function testVoice() {
       const text = 'Aqui é o cook45 na voz grave veterana. E o Niko também está conectado na segunda linha masculina!';
       document.getElementById('captionBar').textContent = text;
-      await fetch('/api/speak', {
+      const res = await apiFetch('/api/speak', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, source: 'Mini Player Teste', play_on_host: true })
       });
-      await fetch('/api/read_last_kilo', { method: 'POST' });
+      const d = await res.json();
+      if (d.cloud_speak) webSpeechFallback(d.cloud_speak);
+      else await apiFetch('/api/read_last_kilo', { method: 'POST' });
     }
 
     async function speakCustom() {
       const text = document.getElementById('miniText').value.trim();
       if (!text) return;
       document.getElementById('captionBar').textContent = text;
-      await fetch('/api/speak', {
+      const res = await apiFetch('/api/speak', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, source: 'Mini Player Manual', play_on_host: true })
       });
+      const d = await res.json();
+      if (d.cloud_speak) webSpeechFallback(d.cloud_speak);
     }
 
     async function stopAudio() {
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
       browserPlayer.pause();
-      await fetch('/api/stop', { method: 'POST' });
+      await apiFetch('/api/stop', { method: 'POST' });
     }
 
     async function togglePin() {
@@ -654,7 +683,7 @@
       btn.className = 'icon-btn' + (pinned ? ' active' : '');
       btn.textContent = pinned ? '📌 TOPO' : '🔓 LIVRE';
       try {
-        await fetch('/api/pin', {
+        await apiFetch('/api/pin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pinned })
@@ -664,13 +693,14 @@
 
     function replayUrl(url) {
       if (!url) return;
-      browserPlayer.src = url + '?t=' + Date.now();
+      const base = (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') ? LOCAL_BRIDGE : '';
+      browserPlayer.src = base + url + '?t=' + Date.now();
       browserPlayer.play().catch(() => {});
     }
 
     async function poll() {
       try {
-        const res = await fetch('/api/state');
+        const res = await apiFetch('/api/state');
         const data = await res.json();
         const st = data.state;
         stateCache = st;

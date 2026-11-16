@@ -6,14 +6,31 @@ const { spawn } = require('child_process');
 const PORT = process.env.PORT || 8090;
 const DAEMON_PORT = process.env.VOICE_DAEMON_PORT || 8091;
 
-// Se estivermos no Windows local, sobe o daemon de voz do cook45 automaticamente
+// Estado em memória na nuvem (Render) para receber sync do PC do clack ou comandos web
+const CLOUD_STATE = {
+  enabled: true,
+  auto_read_chat: true,
+  auto_read_kilo: true,
+  clipboard_watch: false,
+  voice: 'pt-BR-AntonioNeural',
+  rate: '+10%',
+  pitch: '-8Hz',
+  kilo_voice: 'en-US-BrianMultilingualNeural',
+  kilo_rate: '+12%',
+  kilo_pitch: '-2Hz',
+  volume: 100,
+  speaking: false,
+  current_text: '',
+  engine: 'Hybrid Cloud + Local Bridge (127.0.0.1:8091)',
+  history: []
+};
+
 let daemonProc = null;
 function startLocalVoiceDaemon() {
   if (process.platform !== 'win32') return;
   const daemonPath = path.join(__dirname, 'cook45_voice_daemon.py');
   if (!fs.existsSync(daemonPath)) return;
 
-  // Tenta Python314 (onde o pip instalou edge-tts) ou python padrão
   const py314 = 'C:\\Users\\SEJUC\\AppData\\Local\\Programs\\Python\\Python314\\python.exe';
   const pyBin = fs.existsSync(py314) ? py314 : 'python';
 
@@ -43,51 +60,102 @@ const MIME_TYPES = {
   '.png': 'image/png'
 };
 
-function proxyToDaemon(req, res) {
-  const options = {
-    hostname: '127.0.0.1',
-    port: DAEMON_PORT,
-    path: req.url,
-    method: req.method,
-    headers: req.headers
-  };
+function setCors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Access-Control-Request-Private-Network');
+}
 
-  const proxyReq = http.request(options, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode, proxyRes.headers);
-    proxyRes.pipe(res, { end: true });
-  });
+function handleCloudFallback(req, res, bodyStr) {
+  setCors(res);
+  let payload = {};
+  try { payload = JSON.parse(bodyStr || '{}'); } catch (e) {}
 
-  proxyReq.on('error', () => {
-    // Fallback quando roda em nuvem (Render) sem o daemon local winmm
+  if (req.url === '/api/sync' && req.method === 'POST') {
+    if (payload.state) {
+      Object.assign(CLOUD_STATE, payload.state);
+    }
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({
-      cloud_mode: true,
-      state: {
-        enabled: true,
-        auto_read_chat: true,
-        clipboard_watch: false,
-        voice: 'pt-BR-AntonioNeural',
-        rate: '+12%',
-        pitch: '-6Hz',
-        volume: 100,
-        speaking: false,
-        current_text: '',
-        engine: 'Web Speech Neural / Browser Fallback',
-        history: []
-      },
-      voices: [
-        { id: 'pt-BR-AntonioNeural', name: 'Cook45 Padrão (Antonio Neural - Firme/Direto)', pitch: '-6Hz', rate: '+12%' },
-        { id: 'pt-BR-DonatoNeural', name: 'Cook45 Veterano (Donato Neural - Grave/Sênior)', pitch: '-8Hz', rate: '+8%' },
-        { id: 'pt-BR-HumbertoNeural', name: 'Cook45 Tático (Humberto Neural - Seco/Rápido)', pitch: '-4Hz', rate: '+15%' },
-        { id: 'pt-BR-FabioNeural', name: 'Cook45 Estúdio (Fabio Neural - Claro/Natural)', pitch: '-3Hz', rate: '+10%' }
-      ]
-    }));
-  });
+    return res.end(JSON.stringify({ ok: true }));
+  }
 
-  req.pipe(proxyReq, { end: true });
+  if (req.url === '/api/config' && req.method === 'POST') {
+    Object.assign(CLOUD_STATE, payload);
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    return res.end(JSON.stringify({ ok: true, state: CLOUD_STATE }));
+  }
+
+  if (req.url === '/api/speak' && req.method === 'POST') {
+    const txt = (payload.text || '').trim();
+    if (txt) {
+      CLOUD_STATE.current_text = txt;
+      CLOUD_STATE.history.unshift({
+        id: Date.now().toString(36),
+        timestamp: new Date().toLocaleTimeString('pt-BR'),
+        source: payload.source || 'Nuvem Render',
+        text: txt,
+        voice: CLOUD_STATE.voice
+      });
+      CLOUD_STATE.history = CLOUD_STATE.history.slice(0, 25);
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    return res.end(JSON.stringify({ ok: true, cloud_speak: txt }));
+  }
+
+  res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify({
+    cloud_mode: true,
+    state: CLOUD_STATE,
+    voices: [
+      { id: 'pt-BR-AntonioNeural', name: 'Cook45 Veterano (Antonio PT-BR - Grave -8Hz)', pitch: '-8Hz', rate: '+10%' },
+      { id: 'en-US-BrianMultilingualNeural', name: 'Niko Masculino (Brian Neural - Outro Homem)', pitch: '-2Hz', rate: '+12%' },
+      { id: 'en-US-AndrewMultilingualNeural', name: 'Andrew Masculino (Copilot Neural - Firme)', pitch: '-4Hz', rate: '+10%' },
+      { id: 'pt-PT-DuarteNeural', name: 'Duarte Masculino (Neural Luso)', pitch: '-3Hz', rate: '+12%' }
+    ],
+    queue_size: 0
+  }));
+}
+
+function proxyToDaemon(req, res) {
+  let bodyChunks = [];
+  req.on('data', chunk => bodyChunks.push(chunk));
+  req.on('end', () => {
+    const bodyBuffer = Buffer.concat(bodyChunks);
+    const bodyStr = bodyBuffer.toString('utf-8');
+
+    const options = {
+      hostname: '127.0.0.1',
+      port: DAEMON_PORT,
+      path: req.url,
+      method: req.method,
+      headers: req.headers
+    };
+
+    const proxyReq = http.request(options, (proxyRes) => {
+      setCors(res);
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res, { end: true });
+    });
+
+    proxyReq.on('error', () => {
+      handleCloudFallback(req, res, bodyStr);
+    });
+
+    if (bodyBuffer.length > 0) {
+      proxyReq.write(bodyBuffer);
+    }
+    proxyReq.end();
+  });
 }
 
 const server = http.createServer((req, res) => {
+  if (req.method === 'OPTIONS') {
+    setCors(res);
+    res.writeHead(200);
+    return res.end();
+  }
+
   if (req.url.startsWith('/api/') || req.url.startsWith('/audio/')) {
     return proxyToDaemon(req, res);
   }
@@ -106,6 +174,7 @@ const server = http.createServer((req, res) => {
       return res.end('404 Not Found');
     }
     const ext = path.extname(fullPath).toLowerCase();
+    setCors(res);
     res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
     res.end(content);
   });

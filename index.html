@@ -591,6 +591,17 @@
     let cloudMode = false;
     let lastPlayedUrl = '';
     const browserAudio = document.getElementById('browserAudio');
+    const LOCAL_BRIDGE = 'http://127.0.0.1:8091';
+
+    async function apiFetch(path, opts = {}) {
+      if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        try {
+          const r = await fetch(LOCAL_BRIDGE + path, opts);
+          if (r.ok) return r;
+        } catch (e) {}
+      }
+      return await fetch(path, opts);
+    }
 
     // Osciloscópio Canvas
     const canvas = document.getElementById('scopeCanvas');
@@ -671,7 +682,7 @@
       };
 
       try {
-        await fetch('/api/config', {
+        await apiFetch('/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(cfg)
@@ -699,7 +710,7 @@
         browserFallbackSpeak(text);
         return;
       }
-      await fetch('/api/speak', {
+      await apiFetch('/api/speak', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, source: 'Painel Manual', play_on_host: true })
@@ -713,7 +724,7 @@
         browserFallbackSpeak(sample);
         return;
       }
-      await fetch('/api/speak', {
+      await apiFetch('/api/speak', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: sample, source: 'Teste de Timbre', play_on_host: true })
@@ -725,7 +736,7 @@
         browserFallbackSpeak('Modo nuvem ativo. Conecte ao daemon local no seu PC para ler o chat do Antigravity.');
         return;
       }
-      await fetch('/api/read_last', { method: 'POST' });
+      await apiFetch('/api/read_last', { method: 'POST' });
     }
 
     async function stopVoice() {
@@ -733,20 +744,21 @@
       browserAudio.pause();
       isSpeaking = false;
       try {
-        await fetch('/api/stop', { method: 'POST' });
+        await apiFetch('/api/stop', { method: 'POST' });
       } catch (e) {}
     }
 
     function playAudioInBrowser(url) {
       if (!url) return;
-      browserAudio.src = url + '?t=' + Date.now();
+      const base = (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') ? LOCAL_BRIDGE : '';
+      browserAudio.src = base + url + '?t=' + Date.now();
       browserAudio.play().catch(() => {});
     }
 
     let voicesPopulated = false;
     async function pollState() {
       try {
-        const res = await fetch('/api/state');
+        const res = await apiFetch('/api/state');
         const data = await res.json();
         cloudMode = !!data.cloud_mode;
         const st = data.state;
