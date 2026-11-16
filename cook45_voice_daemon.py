@@ -612,6 +612,15 @@ class VoiceDaemonHandler(BaseHTTPRequestHandler):
             count = pin_mini_player_window(pinned=pinned, move_to_side=move_side)
             return self._send_json({"ok": True, "pinned": pinned, "windows_updated": count})
 
+        elif parsed.path == "/api/spawn_floating":
+            try:
+                import subprocess
+                script = os.path.join(BASE_DIR, "abrir_mini_player.py")
+                subprocess.Popen([sys.executable, script], cwd=BASE_DIR)
+                return self._send_json({"ok": True, "spawned": True})
+            except Exception as e:
+                return self._send_json({"error": str(e)}, 500)
+
         elif parsed.path == "/api/read_last_kilo":
             parts = get_latest_kilo_parts(limit=10)
             if parts:

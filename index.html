@@ -472,8 +472,8 @@
           <button id="btnCompact" class="icon-btn" onclick="toggleCompactMode()" title="Encolher/Expandir gavetas">
             ➖ MINI
           </button>
-          <button id="btnPin" class="icon-btn active" onclick="launchFloatingMiniPlayer()" title="Destacar janela pequena sempre no topo">
-            🪟 SOLTAR
+          <button id="btnPin" class="icon-btn active" onclick="onTopActionClick()" title="Fixar Sempre no Topo sobre qualquer programa">
+            📌 TOPO
           </button>
         </div>
       </div>
@@ -605,46 +605,46 @@
     const browserPlayer = document.getElementById('browserPlayer');
     const LOCAL_BRIDGE = 'http://127.0.0.1:8091';
 
+    let isPinnedTop = true;
+
     // Se já abriu em popup pequeno ou janela de app, ativa o modo flutuante compacto
-    if (window.opener || window.innerWidth <= 420 || location.search.includes('popup=1')) {
+    if (window.opener || window.innerWidth <= 430 || location.search.includes('popup=1')) {
       document.body.classList.add('floating-mode');
-      try { window.resizeTo(372, 575); } catch (e) {}
+      try { window.resizeTo(368, 560); } catch (e) {}
     }
 
-    // Destaca o Mini-Player usando Document Picture-in-Picture (Sem Abas e Sempre no Topo!) ou Popup Compacto
-    async function launchFloatingMiniPlayer() {
-      if ('documentPictureInPicture' in window) {
-        try {
-          const pipWin = await window.documentPictureInPicture.requestWindow({
-            width: 368,
-            height: 545
-          });
-          // Copia o estilo para a janela flutuante sem abas
-          const styleClone = document.getElementById('playerStyles').cloneNode(true);
-          pipWin.document.head.appendChild(styleClone);
-          pipWin.document.body.classList.add('floating-mode');
-
-          const shell = document.getElementById('playerShell');
-          pipWin.document.body.appendChild(shell);
-
-          pipWin.addEventListener('pagehide', () => {
-            document.getElementById('playerRoot').appendChild(shell);
-          });
-          return;
-        } catch (err) {
-          console.log('Fallback para popup compacto:', err);
-        }
+    async function onTopActionClick() {
+      if (!document.body.classList.contains('floating-mode')) {
+        return launchFloatingMiniPlayer();
       }
+      isPinnedTop = !isPinnedTop;
+      const btn = document.getElementById('btnPin');
+      btn.className = 'icon-btn' + (isPinnedTop ? ' active' : '');
+      btn.textContent = isPinnedTop ? '📌 TOPO' : '🔓 LIVRE';
+      try {
+        await apiFetch('/api/pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pinned: isPinnedTop })
+        });
+      } catch (e) {}
+    }
 
-      // Fallback Popup Compacto sem barra de abas
-      const w = 368, h = 555;
-      const left = Math.max(10, window.screen.availWidth - w - 20);
-      const top = 70;
-      window.open(
-        location.origin + '/mini.html?popup=1',
-        'TyonMiniPlayerPopup',
-        `popup=yes,width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes`
-      );
+    // Dispara o App Independente Sempre no Topo no Windows (fica sobre qualquer tela mesmo fechando o Chrome!)
+    async function launchFloatingMiniPlayer() {
+      // 1. Aciona o protocolo nativo registrado no Windows (tyonvoice://open) para abrir fora do Chrome com HWND_TOPMOST
+      try {
+        const f = document.createElement('iframe');
+        f.style.display = 'none';
+        f.src = 'tyonvoice://open';
+        document.body.appendChild(f);
+        setTimeout(() => f.remove(), 2000);
+      } catch (e) {}
+
+      // 2. Também avisa o daemon local caso esteja em sessão interativa
+      try {
+        await apiFetch('/api/spawn_floating', { method: 'POST' });
+      } catch (e) {}
     }
 
     function toggleCompactMode() {

@@ -1,11 +1,13 @@
 import os
+import sys
 import time
 import ctypes
 import subprocess
 
 user32 = ctypes.windll.user32
 
-def find_browser_exe():
+def find_edge_or_chrome():
+    # Prioriza Microsoft Edge para rodar em processo 100% separado do Chrome principal do clack
     candidates = [
         r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
         r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
@@ -17,8 +19,9 @@ def find_browser_exe():
             return path
     return "msedge"
 
-def lock_mini_player_topmost():
+def lock_mini_player_topmost(pinned: bool = True):
     HWND_TOPMOST = -1
+    HWND_NOTOPMOST = -2
     SWP_SHOWWINDOW = 0x0040
     WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
     matched = []
@@ -38,24 +41,29 @@ def lock_mini_player_topmost():
     user32.EnumWindows(cb, 0)
 
     screen_w = user32.GetSystemMetrics(0)
-    width, height = 355, 535
+    width, height = 368, 560
     x = max(10, screen_w - width - 18)
-    y = 70
+    y = 65
+    z_flag = HWND_TOPMOST if pinned else HWND_NOTOPMOST
 
     for hwnd in matched:
-        user32.SetWindowPos(hwnd, HWND_TOPMOST, x, y, width, height, SWP_SHOWWINDOW)
+        user32.SetWindowPos(hwnd, z_flag, x, y, width, height, SWP_SHOWWINDOW)
     return len(matched)
 
 def main():
-    exe = find_browser_exe()
-    url = "http://localhost:8090/mini.html"
-    profile_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mini_profile")
+    exe = find_edge_or_chrome()
+    # Usa o link da nuvem do Render se solicitado, ou o servidor local híbrido
+    url = "https://voz-tyon.onrender.com/?popup=1"
+    if "--local" in sys.argv:
+        url = "http://localhost:8090/?popup=1"
+
+    profile_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mini_profile_cloud")
     os.makedirs(profile_dir, exist_ok=True)
 
     screen_w = user32.GetSystemMetrics(0)
-    width, height = 355, 535
+    width, height = 368, 560
     x = max(10, screen_w - width - 18)
-    y = 70
+    y = 65
 
     args = [
         exe,
@@ -70,12 +78,12 @@ def main():
     subprocess.Popen(args)
 
     # Aguarda a janela abrir e trava como Always-On-Top (HWND_TOPMOST)
-    for _ in range(25):
+    for _ in range(35):
         time.sleep(0.25)
-        if lock_mini_player_topmost() > 0:
-            time.sleep(0.3)
-            lock_mini_player_topmost()
-            print("[MINI PLAYER] Janela acoplada na lateral e fixada Sempre no Topo (HWND_TOPMOST)!")
+        if lock_mini_player_topmost(True) > 0:
+            time.sleep(0.4)
+            lock_mini_player_topmost(True)
+            print("[MINI PLAYER CLOUD] Janela independente acoplada e fixada Sempre no Topo (HWND_TOPMOST)!")
             break
 
 if __name__ == "__main__":

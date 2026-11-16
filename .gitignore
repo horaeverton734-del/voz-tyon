@@ -1,6 +1,7 @@
 node_modules/
 audio_cache/
 mini_profile/
+mini_profile_cloud/
 __pycache__/
 *.pyc
 .env
