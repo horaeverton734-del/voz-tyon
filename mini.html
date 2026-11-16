@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TYON-V45 // MINI PLAYER COOK45 + NIKO</title>
+  <style>
+    :root {
+      --bg: #080b10;
+      --chassis: #10151f;
+      --panel: #161d2b;
+      --border: #26334d;
+      --neon: #00ff9d;
+      --amber: #ffae00;
+      --danger: #ff3b5c;
+      --cyan: #00d2ff;
+      --text: #e2e8f0;
+      --muted: #8494ad;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Consolas', 'JetBrains Mono', monospace;
+      user-select: none;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+      padding: 6px;
+    }
+
+    .player-shell {
+      background: linear-gradient(180deg, #131926 0%, #0b0f17 100%);
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9);
+    }
+
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 7px;
+      margin-bottom: 8px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .led {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--neon);
+      box-shadow: 0 0 10px var(--neon);
+      flex-shrink: 0;
+    }
+    .led.speaking {
+      background: var(--amber);
+      box-shadow: 0 0 16px var(--amber);
+      animation: blink 0.4s infinite alternate;
+    }
+    .led.off {
+      background: var(--danger);
+      box-shadow: 0 0 8px var(--danger);
+    }
+
+    @keyframes blink {
+      from { opacity: 0.65; transform: scale(0.9); }
+      to { opacity: 1; transform: scale(1.2); }
+    }
+
+    .brand-title {
+      font-size: 0.82rem;
+      font-weight: bold;
+      color: #fff;
+      letter-spacing: 0.5px;
+    }
+    .brand-sub {
+      font-size: 0.65rem;
+      color: var(--neon);
+      display: block;
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 5px;
+    }
+
+    .icon-btn {
+      background: #1a2333;
+      border: 1px solid #2e3e5c;
+      color: var(--cyan);
+      border-radius: 5px;
+      padding: 4px 7px;
+      font-size: 0.7rem;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .icon-btn.active {
+      background: rgba(0, 255, 157, 0.18);
+      border-color: var(--neon);
+      color: var(--neon);
+    }
+
+    /* Visor Osciloscópio Mini */
+    .lcd-screen {
+      background: #04070b;
+      border: 1px solid #1c2d3d;
+      border-radius: 7px;
+      height: 74px;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    canvas#miniScope {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .lcd-info {
+      position: absolute;
+      top: 5px;
+      left: 8px;
+      right: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.64rem;
+      color: var(--neon);
+      pointer-events: none;
+    }
+
+    .lcd-marquee {
+      position: absolute;
+      bottom: 5px;
+      left: 8px;
+      right: 8px;
+      font-size: 0.7rem;
+      color: #d1fae5;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+      background: rgba(4, 7, 11, 0.75);
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+
+    /* Controles Principais de Media Player (4 botões: Cook45, Niko, Testar, Parar) */
+    .transport-bar {
+      display: grid;
+      grid-template-columns: 1.15fr 1.15fr 0.9fr 0.85fr;
+      gap: 5px;
+      margin-bottom: 8px;
+    }
+
+    .t-btn {
+      background: #1c2536;
+      color: #fff;
+      border: 1px solid #334463;
+      border-radius: 6px;
+      padding: 8px 4px;
+      font-size: 0.68rem;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      transition: 0.15s;
+    }
+    .t-btn:hover {
+      border-color: var(--cyan);
+      background: #243047;
+    }
+    .t-btn.play {
+      background: rgba(0, 255, 157, 0.15);
+      border-color: var(--neon);
+      color: var(--neon);
+    }
+    .t-btn.niko {
+      background: rgba(0, 210, 255, 0.15);
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+    .t-btn.stop {
+      background: rgba(255, 59, 92, 0.16);
+      border-color: var(--danger);
+      color: #ff7088;
+    }
+
+    /* Barra Rápida de Switches (4 chaves: Voz, Cook45, Niko, Ctrl+C) */
+    .quick-toggles {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5px;
+      margin-bottom: 8px;
+    }
+
+    .q-pill {
+      background: #0e131d;
+      border: 1px solid #222e45;
+      border-radius: 5px;
+      padding: 6px 3px;
+      text-align: center;
+      font-size: 0.63rem;
+      color: var(--muted);
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .q-pill.on {
+      background: rgba(0, 255, 157, 0.12);
+      border-color: var(--neon);
+      color: var(--neon);
+      font-weight: bold;
+    }
+    .q-pill.on-niko {
+      background: rgba(0, 210, 255, 0.14);
+      border-color: var(--cyan);
+      color: var(--cyan);
+      font-weight: bold;
+    }
+
+    /* Abas das Gavetas */
+    .tabs-bar {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      border-top: 1px solid var(--border);
+      padding-top: 8px;
+      margin-bottom: 8px;
+    }
+
+    .tab-btn {
+      background: #111722;
+      border: 1px solid #222d42;
+      color: var(--muted);
+      padding: 6px 4px;
+      font-size: 0.68rem;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .tab-btn.active {
+      background: #1d283b;
+      color: var(--cyan);
+      border-color: var(--cyan);
+    }
+
+    .drawer {
+      display: none;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 9px;
+      margin-bottom: 4px;
+    }
+    .drawer.open {
+      display: block;
+    }
+
+    .ctrl-row {
+      margin-bottom: 8px;
+    }
+    .ctrl-row:last-child {
+      margin-bottom: 0;
+    }
+    .ctrl-row label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.68rem;
+      color: var(--muted);
+      margin-bottom: 3px;
+    }
+
+    select, textarea {
+      width: 100%;
+      background: #0a0e16;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 6px 8px;
+      font-size: 0.73rem;
+      outline: none;
+      user-select: text;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--neon);
+      height: 14px;
+      cursor: pointer;
+    }
+
+    textarea#miniText {
+      height: 68px;
+      resize: none;
+      margin-bottom: 6px;
+    }
+
+    .hist-box {
+      max-height: 165px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .h-item {
+      background: #0b1018;
+      border: 1px solid #1f2b3f;
+      border-radius: 5px;
+      padding: 6px 8px;
+      font-size: 0.7rem;
+    }
+    .h-meta {
+      display: flex;
+      justify-content: space-between;
+      color: var(--cyan);
+      font-size: 0.63rem;
+      margin-bottom: 3px;
+    }
+    .h-txt {
+      color: #cbd5e1;
+      line-height: 1.3;
+      margin-bottom: 5px;
+      user-select: text;
+    }
+    .h-btn {
+      background: #172234;
+      color: var(--neon);
+      border: 1px solid #2b3f5c;
+      padding: 2px 7px;
+      border-radius: 3px;
+      font-size: 0.64rem;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <div class="player-shell">
+    <!-- Cabeçalho do Mini Player -->
+    <div class="top-bar">
+      <div class="brand">
+        <div id="led" class="led"></div>
+        <div>
+          <span class="brand-title">COOK45 + NIKO // MINI PLAYER</span>
+          <span class="brand-sub" id="statusTxt">2 VOZES MASCULINAS ATIVAS...</span>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button id="btnPin" class="icon-btn active" onclick="togglePin()" title="Fixar sempre no topo ao lado do chat">
+          📌 TOPO
+        </button>
+      </div>
+    </div>
+
+    <!-- Visor LCD + Osciloscópio -->
+    <div class="lcd-screen">
+      <canvas id="miniScope" width="310" height="74"></canvas>
+      <div class="lcd-info">
+        <span id="voiceLabel">COOK45: Antonio (-8Hz)</span>
+        <span id="kiloLabel" style="color:var(--cyan);">NIKO: Brian (-2Hz)</span>
+      </div>
+      <div class="lcd-marquee" id="captionBar">
+        Dual-Voice ativo — tudo que o cook45 e o Niko responderem toca aqui!
+      </div>
+    </div>
+
+    <!-- Botões Principais estilo Media Player -->
+    <div class="transport-bar">
+      <button class="t-btn play" onclick="readLast()">
+        ▶ COOK45
+      </button>
+      <button class="t-btn niko" onclick="readLastKilo()">
+        🤖 LER NIKO
+      </button>
+      <button class="t-btn" onclick="testVoice()">
+        ⚡ TESTAR
+      </button>
+      <button class="t-btn stop" onclick="stopAudio()">
+        ⏹ PARAR
+      </button>
+    </div>
+
+    <!-- Chaves Rápidas (Master / Auto-Cook45 / Auto-Niko / Clipboard) -->
+    <div class="quick-toggles">
+      <div id="pillPower" class="q-pill on" onclick="toggleFlag('enabled')">
+        🔊 SOM: ON
+      </div>
+      <div id="pillChat" class="q-pill on" onclick="toggleFlag('auto_read_chat')">
+        💬 COOK: ON
+      </div>
+      <div id="pillKilo" class="q-pill on-niko" onclick="toggleFlag('auto_read_kilo')">
+        🤖 NIKO: ON
+      </div>
+      <div id="pillClip" class="q-pill" onclick="toggleFlag('clipboard_watch')">
+        📋 CTRL+C
+      </div>
+    </div>
+
+    <!-- Abas das Gavetas -->
+    <div class="tabs-bar">
+      <button class="tab-btn active" id="tabBtn-voice" onclick="openTab('voice')">🎛️ VOZ/TOM</button>
+      <button class="tab-btn" id="tabBtn-speak" onclick="openTab('speak')">🎙️ DIGITAR</button>
+      <button class="tab-btn" id="tabBtn-hist" onclick="openTab('hist')">📜 HISTÓRICO</button>
+    </div>
+
+    <!-- Gaveta 1: Voz do Cook45 + Voz do Niko + Sliders -->
+    <div class="drawer open" id="drawer-voice">
+      <div class="ctrl-row">
+        <label><span style="color:var(--neon); font-weight:bold;">VOZ DO COOK45 (DIREITA):</span></label>
+        <select id="selVoice" onchange="onPresetChange()">
+          <option value="pt-BR-AntonioNeural" data-pitch="-8" data-rate="10">Cook45 Veterano (Antonio PT-BR - Grave -8Hz)</option>
+          <option value="pt-BR-AntonioNeural" data-pitch="-12" data-rate="8">Cook45 Subgrave Pesado (Antonio -12Hz)</option>
+          <option value="en-US-AndrewMultilingualNeural" data-pitch="-6" data-rate="10">Cook45 Andrew (Masculino Encorpado -6Hz)</option>
+        </select>
+      </div>
+
+      <div class="ctrl-row">
+        <label><span style="color:var(--cyan); font-weight:bold;">VOZ DO NIKO / KILO CODE (ESQUERDA):</span></label>
+        <select id="selKiloVoice" onchange="onKiloPresetChange()">
+          <option value="en-US-BrianMultilingualNeural" data-pitch="-2Hz" data-rate="+12%">Niko Masculino 1 (Brian Neural - Outro Homem)</option>
+          <option value="en-US-AndrewMultilingualNeural" data-pitch="-3Hz" data-rate="+12%">Niko Masculino 2 (Andrew Neural - Firme)</option>
+          <option value="pt-BR-AntonioNeural" data-pitch="+6Hz" data-rate="+16%">Niko Masculino 3 (Antonio Jovem Rápido +6Hz)</option>
+          <option value="fr-FR-RemyMultilingualNeural" data-pitch="-3Hz" data-rate="+12%">Niko Masculino 4 (Remy Neural)</option>
+          <option value="pt-PT-DuarteNeural" data-pitch="-3Hz" data-rate="+12%">Niko Masculino 5 (Duarte Neural)</option>
+        </select>
+      </div>
+
+      <div class="ctrl-row">
+        <label><span>VELOCIDADE (RATE)</span><strong id="lblRate">+10%</strong></label>
+        <input type="range" id="rngRate" min="-25" max="45" value="10" oninput="syncLabels()" onchange="pushConfig()" />
+      </div>
+      <div class="ctrl-row">
+        <label><span>GRAVE / PITCH</span><strong id="lblPitch">-8Hz</strong></label>
+        <input type="range" id="rngPitch" min="-20" max="15" value="-8" oninput="syncLabels()" onchange="pushConfig()" />
+      </div>
+      <div class="ctrl-row">
+        <label><span>VOLUME</span><strong id="lblVol">100%</strong></label>
+        <input type="range" id="rngVol" min="10" max="100" value="100" oninput="syncLabels()" onchange="pushConfig()" />
+      </div>
+    </div>
+
+    <!-- Gaveta 2: Transmissor de Texto Manual -->
+    <div class="drawer" id="drawer-speak">
+      <textarea id="miniText" placeholder="Cole ou digite qualquer texto aqui para ouvir..."></textarea>
+      <div style="display:flex; gap:6px;">
+        <button class="t-btn play" style="flex:1;" onclick="speakCustom()">🎙️ FALAR AGORA</button>
+        <button class="t-btn" onclick="document.getElementById('miniText').value=''">LIMPAR</button>
+      </div>
+    </div>
+
+    <!-- Gaveta 3: Histórico de Áudios com Replay -->
+    <div class="drawer" id="drawer-hist">
+      <div class="hist-box" id="histBox">
+        <div style="color:var(--muted); font-size:0.7rem;">Sem transmissões ainda.</div>
+      </div>
+    </div>
+  </div>
+
+  <audio id="browserPlayer" style="display:none;"></audio>
+
+  <script>
+    let stateCache = {
+      enabled: true,
+      auto_read_chat: true,
+      auto_read_kilo: true,
+      clipboard_watch: false,
+      voice: 'pt-BR-AntonioNeural',
+      rate: '+10%',
+      pitch: '-8Hz',
+      kilo_voice: 'en-US-BrianMultilingualNeural',
+      kilo_rate: '+12%',
+      kilo_pitch: '-2Hz',
+      volume: 100,
+      speaking: false
+    };
+    let pinned = true;
+    const browserPlayer = document.getElementById('browserPlayer');
+
+    const cvs = document.getElementById('miniScope');
+    const c = cvs.getContext('2d');
+    let ph = 0;
+    function drawScope() {
+      const w = cvs.width, h = cvs.height;
+      c.fillStyle = '#04070b';
+      c.fillRect(0, 0, w, h);
+
+      c.strokeStyle = 'rgba(0,255,157,0.06)';
+      for (let x = 0; x < w; x += 24) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, h); c.stroke(); }
+
+      c.beginPath();
+      c.strokeStyle = stateCache.speaking ? '#ffae00' : '#00ff9d';
+      c.lineWidth = 2;
+      for (let x = 0; x < w; x++) {
+        const env = Math.sin((x / w) * Math.PI);
+        const amp = stateCache.speaking
+          ? (Math.sin(x * 0.07 + ph * 3) * 16 + Math.cos(x * 0.17 - ph * 4) * 10) * env
+          : Math.sin(x * 0.04 + ph) * 2.2 * env;
+        const y = h / 2 + amp;
+        if (x === 0) c.moveTo(x, y); else c.lineTo(x, y);
+      }
+      c.stroke();
+      ph += stateCache.speaking ? 0.18 : 0.04;
+      requestAnimationFrame(drawScope);
+    }
+    drawScope();
+
+    function openTab(name) {
+      ['voice', 'speak', 'hist'].forEach(t => {
+        const d = document.getElementById('drawer-' + t);
+        const b = document.getElementById('tabBtn-' + t);
+        if (t === name) {
+          const isAlreadyOpen = d.classList.contains('open');
+          d.classList.toggle('open', !isAlreadyOpen);
+          b.classList.toggle('active', !isAlreadyOpen);
+        } else {
+          d.classList.remove('open');
+          b.classList.remove('active');
+        }
+      });
+    }
+
+    function syncLabels() {
+      const r = parseInt(document.getElementById('rngRate').value, 10);
+      const p = parseInt(document.getElementById('rngPitch').value, 10);
+      const v = parseInt(document.getElementById('rngVol').value, 10);
+      document.getElementById('lblRate').textContent = (r >= 0 ? '+' : '') + r + '%';
+      document.getElementById('lblPitch').textContent = (p >= 0 ? '+' : '') + p + 'Hz';
+      document.getElementById('lblVol').textContent = v + '%';
+    }
+
+    function onPresetChange() {
+      const sel = document.getElementById('selVoice');
+      const opt = sel.options[sel.selectedIndex];
+      if (opt && opt.dataset.pitch) {
+        document.getElementById('rngPitch').value = parseInt(opt.dataset.pitch, 10);
+        document.getElementById('rngRate').value = parseInt(opt.dataset.rate, 10);
+        syncLabels();
+      }
+      pushConfig();
+    }
+
+    async function onKiloPresetChange() {
+      const sel = document.getElementById('selKiloVoice');
+      const opt = sel.options[sel.selectedIndex];
+      const kv = sel.value;
+      const kp = opt ? (opt.dataset.pitch || '-2Hz') : '-2Hz';
+      const kr = opt ? (opt.dataset.rate || '+12%') : '+12%';
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kilo_voice: kv, kilo_pitch: kp, kilo_rate: kr })
+      });
+    }
+
+    async function toggleFlag(key) {
+      stateCache[key] = !stateCache[key];
+      renderPills();
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: stateCache[key] })
+      });
+    }
+
+    function renderPills() {
+      const pPower = document.getElementById('pillPower');
+      pPower.className = 'q-pill' + (stateCache.enabled ? ' on' : '');
+      pPower.textContent = stateCache.enabled ? '🔊 SOM: ON' : '🔇 MUTE';
+
+      const pChat = document.getElementById('pillChat');
+      pChat.className = 'q-pill' + (stateCache.auto_read_chat ? ' on' : '');
+      pChat.textContent = stateCache.auto_read_chat ? '💬 COOK: ON' : '💬 COOK: OFF';
+
+      const pKilo = document.getElementById('pillKilo');
+      pKilo.className = 'q-pill' + (stateCache.auto_read_kilo !== false ? ' on-niko' : '');
+      pKilo.textContent = stateCache.auto_read_kilo !== false ? '🤖 NIKO: ON' : '🤖 NIKO: OFF';
+
+      const pClip = document.getElementById('pillClip');
+      pClip.className = 'q-pill' + (stateCache.clipboard_watch ? ' on' : '');
+      pClip.textContent = stateCache.clipboard_watch ? '📋 CTRL+C: ON' : '📋 CTRL+C';
+    }
+
+    async function pushConfig() {
+      syncLabels();
+      const r = parseInt(document.getElementById('rngRate').value, 10);
+      const p = parseInt(document.getElementById('rngPitch').value, 10);
+      const v = parseInt(document.getElementById('rngVol').value, 10);
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          voice: document.getElementById('selVoice').value,
+          rate: (r >= 0 ? '+' : '') + r + '%',
+          pitch: (p >= 0 ? '+' : '') + p + 'Hz',
+          volume: v
+        })
+      });
+    }
+
+    async function readLast() {
+      await fetch('/api/read_last', { method: 'POST' });
+    }
+
+    async function readLastKilo() {
+      await fetch('/api/read_last_kilo', { method: 'POST' });
+    }
+
+    async function testVoice() {
+      const text = 'Aqui é o cook45 na voz grave veterana. E o Niko também está conectado na segunda linha masculina!';
+      document.getElementById('captionBar').textContent = text;
+      await fetch('/api/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, source: 'Mini Player Teste', play_on_host: true })
+      });
+      await fetch('/api/read_last_kilo', { method: 'POST' });
+    }
+
+    async function speakCustom() {
+      const text = document.getElementById('miniText').value.trim();
+      if (!text) return;
+      document.getElementById('captionBar').textContent = text;
+      await fetch('/api/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, source: 'Mini Player Manual', play_on_host: true })
+      });
+    }
+
+    async function stopAudio() {
+      browserPlayer.pause();
+      await fetch('/api/stop', { method: 'POST' });
+    }
+
+    async function togglePin() {
+      pinned = !pinned;
+      const btn = document.getElementById('btnPin');
+      btn.className = 'icon-btn' + (pinned ? ' active' : '');
+      btn.textContent = pinned ? '📌 TOPO' : '🔓 LIVRE';
+      try {
+        await fetch('/api/pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pinned })
+        });
+      } catch (e) {}
+    }
+
+    function replayUrl(url) {
+      if (!url) return;
+      browserPlayer.src = url + '?t=' + Date.now();
+      browserPlayer.play().catch(() => {});
+    }
+
+    async function poll() {
+      try {
+        const res = await fetch('/api/state');
+        const data = await res.json();
+        const st = data.state;
+        stateCache = st;
+
+        const led = document.getElementById('led');
+        led.className = 'led' + (!st.enabled ? ' off' : (st.speaking ? ' speaking' : ''));
+        document.getElementById('statusTxt').textContent = !st.enabled
+          ? 'MUTE ATIVO'
+          : (st.speaking ? 'FALANDO AGORA...' : 'COOK45 + NIKO ATIVOS...');
+
+        document.getElementById('voiceLabel').textContent = 'COOK45: ' + (st.voice || '').replace('pt-BR-', '').replace('en-US-', '').replace('Neural', '');
+        document.getElementById('kiloLabel').textContent = 'NIKO: ' + (st.kilo_voice || 'Brian').replace('en-US-', '').replace('pt-BR-', '').replace('MultilingualNeural', '').replace('Neural', '');
+
+        if (st.current_text) {
+          document.getElementById('captionBar').textContent = st.current_text;
+        }
+
+        renderPills();
+
+        if (st.history && st.history.length > 0) {
+          document.getElementById('histBox').innerHTML = st.history.slice(0, 12).map(h => `
+            <div class="h-item">
+              <div class="h-meta"><span>[${h.timestamp}] ${h.source}</span></div>
+              <div class="h-txt">${h.text}</div>
+              <div>
+                ${h.audio_url ? `<button class="h-btn" onclick="replayUrl('${h.audio_url}')">▶ OUVIR</button>` : ''}
+                ${h.audio_url ? `<a class="h-btn" href="${h.audio_url}" download>⬇ MP3</a>` : ''}
+              </div>
+            </div>
+          `).join('');
+        }
+      } catch (e) {}
+    }
+
+    setInterval(poll, 600);
+    poll();
+  </script>
+</body>
+</html>

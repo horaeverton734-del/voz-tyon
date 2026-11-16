@@ -1,0 +1,9 @@
+{
+  "name": "voz-tyon-cook45",
+  "version": "1.0.0",
+  "description": "TYON-V45 // Dispositivo de Voz em Tempo Real do cook45 para clack",
+  "main": "serve.cjs",
+  "scripts": {
+    "start": "node serve.cjs"
+  }
+}
