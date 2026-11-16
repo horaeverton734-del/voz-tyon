@@ -423,12 +423,15 @@
       <div class="brand-title">
         <div id="statusLed" class="led-indicator"></div>
         <div>
-          <h1>TYON-V45 // UNIDADE DE VOZ COOK45</h1>
-          <span class="sub" id="statusSub">ONLINE — ESCUTANDO CHAT DO COOK45 EM TEMPO REAL</span>
+          <h1>TYON-V45 // UNIDADE DUAL-VOICE (COOK45 + NIKO)</h1>
+          <span class="sub" id="statusSub">ONLINE — ESCUTANDO COOK45 + NIKO EM TEMPO REAL</span>
         </div>
       </div>
       <div class="badge-row">
-        <div class="hw-badge" id="engineBadge">ENGINE: EDGE-TTS NEURAL</div>
+        <a href="/mini.html" class="hw-badge" style="text-decoration:none; color:var(--neon); border-color:var(--neon); font-weight:bold;">
+          📱 ABRIR MODO MINI-PLAYER
+        </a>
+        <div class="hw-badge" id="engineBadge">ENGINE: DUAL-MALE NEURAL</div>
         <div class="hw-badge" id="queueBadge">FILA: 0</div>
       </div>
     </div>
@@ -452,15 +455,18 @@
             Aguardando nova resposta do cook45 no chat ou comando manual...
           </div>
 
-          <div class="btn-row">
+          <div class="btn-row" style="grid-template-columns: repeat(4, 1fr);">
             <button class="hw-btn primary" onclick="readLastChat()">
-              🔊 LER ÚLTIMA DO CHAT
+              🔊 LER COOK45
+            </button>
+            <button class="hw-btn" style="border-color:var(--cyan); color:var(--cyan);" onclick="readLastNiko()">
+              🤖 LER NIKO
             </button>
             <button class="hw-btn" onclick="testCookVoice()">
-              ⚡ TESTAR VOZ COOK45
+              ⚡ TESTAR 2 VOZES
             </button>
             <button class="hw-btn danger" onclick="stopVoice()">
-              ⏹ PARAR / CALAR
+              ⏹ PARAR
             </button>
           </div>
         </div>
@@ -511,10 +517,18 @@
 
             <div class="switch-item">
               <label for="chkAutoChat">
-                <strong>AUTO-LER CHAT DO COOK45</strong>
-                <small>Lê automaticamente cada resposta que o cook45 envia aqui</small>
+                <strong>AUTO-LER CHAT DO COOK45 (DIREITA)</strong>
+                <small>Lê automaticamente cada resposta do cook45 com voz grave</small>
               </label>
               <input type="checkbox" id="chkAutoChat" class="toggle" checked onchange="saveConfig()" />
+            </div>
+
+            <div class="switch-item">
+              <label for="chkAutoKilo">
+                <strong style="color:var(--cyan);">AUTO-LER CHAT DO NIKO / KILO (ESQUERDA)</strong>
+                <small>Lê automaticamente o Niko com a 2ª voz masculina</small>
+              </label>
+              <input type="checkbox" id="chkAutoKilo" class="toggle" checked onchange="saveConfig()" />
             </div>
 
             <div class="switch-item">
@@ -529,13 +543,24 @@
 
         <div class="module-box">
           <div class="module-header">
-            <span>MODULADOR DE TIMBRE // PERFIL VOCAL COOK45</span>
-            <span>DSP NEURAL</span>
+            <span>MODULADOR DE TIMBRE // COOK45 vs NIKO</span>
+            <span>DUAL-MALE DSP</span>
           </div>
 
           <div class="control-group">
-            <label><span>TIMBRE / OPERADOR NEURAL</span></label>
+            <label><span style="color:var(--neon); font-weight:bold;">VOZ DO COOK45 (DIREITA)</span></label>
             <select id="selVoice" onchange="onVoicePresetChange()"></select>
+          </div>
+
+          <div class="control-group">
+            <label><span style="color:var(--cyan); font-weight:bold;">VOZ MASCULINA DO NIKO / KILO (ESQUERDA)</span></label>
+            <select id="selKiloVoice" onchange="saveConfig()">
+              <option value="en-US-BrianMultilingualNeural" data-pitch="-2Hz" data-rate="+12%">Niko Masculino 1 (Brian Neural - Outro Homem)</option>
+              <option value="en-US-AndrewMultilingualNeural" data-pitch="-3Hz" data-rate="+12%">Niko Masculino 2 (Andrew Neural - Firme)</option>
+              <option value="pt-BR-AntonioNeural" data-pitch="+6Hz" data-rate="+16%">Niko Masculino 3 (Antonio Jovem Rápido +6Hz)</option>
+              <option value="fr-FR-RemyMultilingualNeural" data-pitch="-3Hz" data-rate="+12%">Niko Masculino 4 (Remy Neural)</option>
+              <option value="pt-PT-DuarteNeural" data-pitch="-3Hz" data-rate="+12%">Niko Masculino 5 (Duarte Neural)</option>
+            </select>
           </div>
 
           <div class="control-group">
@@ -671,11 +696,18 @@
       const p = parseInt(document.getElementById('rngPitch').value, 10);
       const v = parseInt(document.getElementById('rngVol').value, 10);
 
+      const kSel = document.getElementById('selKiloVoice');
+      const kOpt = kSel ? kSel.options[kSel.selectedIndex] : null;
+
       const cfg = {
         enabled: document.getElementById('chkEnabled').checked,
         auto_read_chat: document.getElementById('chkAutoChat').checked,
+        auto_read_kilo: document.getElementById('chkAutoKilo') ? document.getElementById('chkAutoKilo').checked : true,
         clipboard_watch: document.getElementById('chkClipboard').checked,
         voice: document.getElementById('selVoice').value,
+        kilo_voice: kSel ? kSel.value : 'en-US-BrianMultilingualNeural',
+        kilo_pitch: kOpt ? (kOpt.dataset.pitch || '-2Hz') : '-2Hz',
+        kilo_rate: kOpt ? (kOpt.dataset.rate || '+12%') : '+12%',
         rate: (r >= 0 ? '+' : '') + r + '%',
         pitch: (p >= 0 ? '+' : '') + p + 'Hz',
         volume: v
@@ -737,6 +769,14 @@
         return;
       }
       await apiFetch('/api/read_last', { method: 'POST' });
+    }
+
+    async function readLastNiko() {
+      if (cloudMode) {
+        browserFallbackSpeak('Lendo última mensagem do Niko em modo nuvem.');
+        return;
+      }
+      await apiFetch('/api/read_last_kilo', { method: 'POST' });
     }
 
     async function stopVoice() {
