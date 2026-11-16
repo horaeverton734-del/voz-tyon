@@ -1,0 +1,10 @@
+{
+  "name": "TYON-V45 // Mini Player cook45 + Niko",
+  "short_name": "Voz cook45",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#070a0f",
+  "theme_color": "#00ff9d",
+  "description": "Mini-Player Tático de Voz Dual-Male (cook45 + Niko)"
+}

@@ -3,346 +3,391 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TYON-V45 // Dispositivo de Voz cook45</title>
-  <style>
+  <meta name="theme-color" content="#080b11" />
+  <link rel="manifest" href="/manifest.json" />
+  <title>TYON-V45 // MINI PLAYER COOK45 + NIKO</title>
+  <style id="playerStyles">
     :root {
-      --bg-dark: #07090d;
-      --chassis: #10141d;
-      --panel: #151b26;
-      --border: #263147;
+      --bg: #05070b;
+      --chassis-top: #151d2c;
+      --chassis-bot: #0b0f18;
+      --panel: #111826;
+      --border: #25334d;
+      --border-glow: rgba(0, 255, 157, 0.25);
       --neon: #00ff9d;
-      --neon-dim: rgba(0, 255, 157, 0.15);
       --amber: #ffae00;
       --danger: #ff3b5c;
       --cyan: #00d2ff;
-      --text: #e2e8f0;
-      --muted: #7e8da6;
+      --text: #f1f5f9;
+      --muted: #8494ad;
     }
 
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: 'Consolas', 'JetBrains Mono', 'Courier New', monospace;
+      font-family: 'Consolas', 'JetBrains Mono', 'Segoe UI', monospace;
+      user-select: none;
     }
 
     body {
-      background: radial-gradient(circle at top, #131a29 0%, var(--bg-dark) 75%);
+      background: radial-gradient(circle at 50% 20%, #111a2e 0%, #05070b 75%);
       color: var(--text);
       min-height: 100vh;
-      padding: 20px;
       display: flex;
+      flex-direction: column;
       justify-content: center;
-      align-items: flex-start;
+      align-items: center;
+      overflow-x: hidden;
+      padding: 10px;
     }
 
-    .device-chassis {
+    /* Quando está dentro da janela destacada (PiP ou Popup), ocupa 100% justo */
+    body.floating-mode {
+      padding: 4px;
+      justify-content: flex-start;
+      background: #070a10;
+    }
+
+    .player-wrapper {
       width: 100%;
-      max-width: 1080px;
-      background: var(--chassis);
-      border: 2px solid var(--border);
+      max-width: 362px;
+      position: relative;
+      transition: transform 0.06s linear;
+    }
+
+    /* Botão Destacar no Topo (Some quando já está na janelinha destacada) */
+    .popout-banner {
+      width: 100%;
+      margin-bottom: 10px;
+      background: linear-gradient(90deg, rgba(0, 255, 157, 0.16) 0%, rgba(0, 210, 255, 0.16) 100%);
+      border: 1.5px solid var(--neon);
+      border-radius: 10px;
+      padding: 9px 12px;
+      color: #fff;
+      font-size: 0.74rem;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 0 20px rgba(0, 255, 157, 0.22);
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .popout-banner:hover {
+      background: linear-gradient(90deg, rgba(0, 255, 157, 0.28) 0%, rgba(0, 210, 255, 0.28) 100%);
+      transform: translateY(-1px);
+      box-shadow: 0 0 28px rgba(0, 255, 157, 0.4);
+    }
+
+    body.floating-mode .popout-banner {
+      display: none;
+    }
+
+    /* Chassi Metálico do Mini-Player */
+    .player-shell {
+      width: 100%;
+      background: linear-gradient(180deg, var(--chassis-top) 0%, var(--chassis-bot) 100%);
+      border: 1.5px solid var(--border);
       border-radius: 14px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-      padding: 22px;
+      padding: 12px;
+      box-shadow:
+        0 20px 50px rgba(0, 0, 0, 0.92),
+        0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+        0 0 25px rgba(0, 255, 157, 0.06);
       position: relative;
     }
 
-    /* Parafusos de rack tático nos cantos */
+    /* Parafusos táticos */
     .screw {
-      width: 10px;
-      height: 10px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
-      background: #252f42;
-      border: 1px solid #090c12;
+      background: #232f46;
+      border: 1px solid #080b11;
       position: absolute;
     }
-    .screw.tl { top: 10px; left: 10px; }
-    .screw.tr { top: 10px; right: 10px; }
-    .screw.bl { bottom: 10px; left: 10px; }
-    .screw.br { bottom: 10px; right: 10px; }
+    .screw.tl { top: 7px; left: 7px; }
+    .screw.tr { top: 7px; right: 7px; }
+    .screw.bl { bottom: 7px; left: 7px; }
+    .screw.br { bottom: 7px; right: 7px; }
 
-    .header-bar {
+    /* Barra de Título Arrastável */
+    .top-bar {
       display: flex;
       justify-content: space-between;
       align-items: center;
       border-bottom: 1px solid var(--border);
-      padding-bottom: 16px;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
-      gap: 12px;
+      padding-bottom: 8px;
+      margin-bottom: 9px;
+      cursor: move;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .led {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--neon);
+      box-shadow: 0 0 12px var(--neon);
+      flex-shrink: 0;
+    }
+    .led.speaking {
+      background: var(--amber);
+      box-shadow: 0 0 18px var(--amber);
+      animation: pulse 0.38s infinite alternate;
+    }
+    .led.off {
+      background: var(--danger);
+      box-shadow: 0 0 8px var(--danger);
+    }
+
+    @keyframes pulse {
+      from { opacity: 0.65; transform: scale(0.9); }
+      to { opacity: 1; transform: scale(1.22); }
     }
 
     .brand-title {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-
-    .led-indicator {
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: var(--neon);
-      box-shadow: 0 0 14px var(--neon);
-      transition: all 0.25s ease;
-    }
-
-    .led-indicator.speaking {
-      background: var(--amber);
-      box-shadow: 0 0 22px var(--amber);
-      animation: pulseLed 0.45s infinite alternate;
-    }
-
-    .led-indicator.off {
-      background: var(--danger);
-      box-shadow: 0 0 10px var(--danger);
-    }
-
-    @keyframes pulseLed {
-      from { transform: scale(0.92); opacity: 0.75; }
-      to { transform: scale(1.18); opacity: 1; }
-    }
-
-    .brand-title h1 {
-      font-size: 1.35rem;
-      letter-spacing: 1.5px;
-      color: #fff;
-      text-transform: uppercase;
-    }
-
-    .brand-title span.sub {
-      display: block;
-      font-size: 0.78rem;
-      color: var(--neon);
-      margin-top: 2px;
-    }
-
-    .badge-row {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-
-    .hw-badge {
-      background: #0b0f17;
-      border: 1px solid var(--border);
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 0.78rem;
-      color: var(--cyan);
-    }
-
-    .main-grid {
-      display: grid;
-      grid-template-columns: 1.15fr 0.85fr;
-      gap: 20px;
-    }
-
-    @media (max-width: 860px) {
-      .main-grid { grid-template-columns: 1fr; }
-    }
-
-    .module-box {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 16px;
-      margin-bottom: 18px;
-    }
-
-    .module-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
       font-size: 0.82rem;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--muted);
-      margin-bottom: 12px;
-      border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
-      padding-bottom: 8px;
+      font-weight: bold;
+      color: #fff;
+      letter-spacing: 0.6px;
+    }
+    .brand-sub {
+      font-size: 0.63rem;
+      color: var(--neon);
+      display: block;
+      margin-top: 1px;
     }
 
-    /* Tela do Osciloscópio */
-    .scope-screen {
-      background: #05080c;
-      border: 1px solid #1c2c38;
-      border-radius: 8px;
-      height: 150px;
+    .top-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .icon-btn {
+      background: #182233;
+      border: 1px solid #2c3d5b;
+      color: var(--cyan);
+      border-radius: 6px;
+      padding: 4px 7px;
+      font-size: 0.67rem;
+      cursor: pointer;
+      font-weight: bold;
+      transition: 0.15s;
+    }
+    .icon-btn:hover {
+      border-color: var(--cyan);
+      background: #223049;
+    }
+    .icon-btn.active {
+      background: rgba(0, 255, 157, 0.16);
+      border-color: var(--neon);
+      color: var(--neon);
+    }
+
+    /* Visor LCD + Osciloscópio + Barras de Espectro */
+    .lcd-screen {
+      background: linear-gradient(180deg, #03060a 0%, #070d16 100%);
+      border: 1px solid #1d3142;
+      border-radius: 9px;
+      height: 82px;
       position: relative;
       overflow: hidden;
-      margin-bottom: 12px;
-      box-shadow: inset 0 0 24px rgba(0, 255, 157, 0.08);
+      margin-bottom: 9px;
+      box-shadow: inset 0 0 18px rgba(0, 255, 157, 0.08);
     }
 
-    canvas#scopeCanvas {
+    canvas#miniScope {
       width: 100%;
       height: 100%;
       display: block;
     }
 
-    .scope-overlay {
+    .lcd-info {
       position: absolute;
-      top: 10px;
-      left: 12px;
-      right: 12px;
+      top: 5px;
+      left: 8px;
+      right: 8px;
       display: flex;
       justify-content: space-between;
-      font-size: 0.75rem;
+      font-size: 0.63rem;
+      font-weight: bold;
       color: var(--neon);
       pointer-events: none;
-      text-shadow: 0 0 6px rgba(0, 255, 157, 0.6);
+      text-shadow: 0 0 6px rgba(0, 255, 157, 0.5);
     }
 
-    .live-caption {
-      background: #0a0e15;
-      border-left: 3px solid var(--neon);
-      padding: 10px 12px;
-      font-size: 0.88rem;
-      color: #d1fae5;
-      min-height: 52px;
-      border-radius: 0 6px 6px 0;
-      line-height: 1.45;
-      word-break: break-word;
+    .lcd-marquee {
+      position: absolute;
+      bottom: 5px;
+      left: 7px;
+      right: 7px;
+      font-size: 0.69rem;
+      color: #e2e8f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+      background: rgba(5, 9, 15, 0.82);
+      border-left: 2px solid var(--neon);
+      padding: 2px 6px;
+      border-radius: 0 4px 4px 0;
     }
 
-    /* Botões de Ação Tática */
-    .btn-row {
+    /* Botões Principais de Media Player */
+    .transport-bar {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      margin-top: 14px;
+      grid-template-columns: 1.15fr 1.15fr 0.9fr 0.85fr;
+      gap: 5px;
+      margin-bottom: 8px;
     }
 
-    button.hw-btn {
-      background: #1d2636;
+    .t-btn {
+      background: #1a2334;
       color: #fff;
-      border: 1px solid #354664;
-      padding: 11px 12px;
+      border: 1px solid #304160;
       border-radius: 7px;
-      cursor: pointer;
+      padding: 8px 4px;
+      font-size: 0.68rem;
       font-weight: bold;
-      font-size: 0.82rem;
-      text-transform: uppercase;
-      transition: all 0.15s ease;
+      cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
+      gap: 3px;
+      transition: all 0.15s ease;
     }
-
-    button.hw-btn:hover {
-      background: #273349;
-      border-color: var(--cyan);
+    .t-btn:hover {
       transform: translateY(-1px);
+      border-color: var(--cyan);
+      background: #233047;
     }
-
-    button.hw-btn.primary {
-      background: rgba(0, 255, 157, 0.14);
+    .t-btn.play {
+      background: rgba(0, 255, 157, 0.15);
       border-color: var(--neon);
       color: var(--neon);
     }
-
-    button.hw-btn.primary:hover {
-      background: rgba(0, 255, 157, 0.25);
+    .t-btn.niko {
+      background: rgba(0, 210, 255, 0.15);
+      border-color: var(--cyan);
+      color: var(--cyan);
     }
-
-    button.hw-btn.danger {
-      background: rgba(255, 59, 92, 0.15);
+    .t-btn.stop {
+      background: rgba(255, 59, 92, 0.16);
       border-color: var(--danger);
-      color: #ff6b84;
+      color: #ff7088;
     }
 
-    button.hw-btn.danger:hover {
-      background: rgba(255, 59, 92, 0.28);
+    /* Barra Rápida de Switches */
+    .quick-toggles {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5px;
+      margin-bottom: 8px;
     }
 
-    /* Switches e Controles */
-    .switch-list {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-bottom: 14px;
-    }
-
-    .switch-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: #0e131d;
-      padding: 10px 12px;
-      border-radius: 7px;
-      border: 1px solid #1f293d;
-    }
-
-    .switch-item label {
-      font-size: 0.85rem;
+    .q-pill {
+      background: #0c111a;
+      border: 1px solid #202c42;
+      border-radius: 6px;
+      padding: 6px 3px;
+      text-align: center;
+      font-size: 0.62rem;
+      color: var(--muted);
       cursor: pointer;
+      transition: 0.15s;
+    }
+    .q-pill.on {
+      background: rgba(0, 255, 157, 0.12);
+      border-color: var(--neon);
+      color: var(--neon);
+      font-weight: bold;
+    }
+    .q-pill.on-niko {
+      background: rgba(0, 210, 255, 0.14);
+      border-color: var(--cyan);
+      color: var(--cyan);
+      font-weight: bold;
     }
 
-    .switch-item small {
+    /* Corpo Retrátil para o Modo Pocket */
+    #expandableBody.collapsed {
+      display: none;
+    }
+
+    /* Abas das Gavetas */
+    .tabs-bar {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 5px;
+      border-top: 1px solid var(--border);
+      padding-top: 8px;
+      margin-bottom: 8px;
+    }
+
+    .tab-btn {
+      background: #0f1520;
+      border: 1px solid #222d42;
+      color: var(--muted);
+      padding: 6px 4px;
+      font-size: 0.67rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: 0.15s;
+    }
+    .tab-btn.active {
+      background: #1b263b;
+      color: var(--cyan);
+      border-color: var(--cyan);
+    }
+
+    .drawer {
+      display: none;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .drawer.open {
       display: block;
-      color: var(--muted);
-      font-size: 0.72rem;
-      margin-top: 2px;
     }
 
-    input[type="checkbox"].toggle {
-      width: 42px;
-      height: 22px;
-      appearance: none;
-      background: #263042;
-      border-radius: 12px;
-      position: relative;
-      cursor: pointer;
-      outline: none;
-      transition: 0.2s;
+    .ctrl-row {
+      margin-bottom: 8px;
     }
-
-    input[type="checkbox"].toggle:checked {
-      background: var(--neon);
+    .ctrl-row:last-child {
+      margin-bottom: 0;
     }
-
-    input[type="checkbox"].toggle::after {
-      content: '';
-      width: 16px;
-      height: 16px;
-      background: #090d14;
-      border-radius: 50%;
-      position: absolute;
-      top: 3px;
-      left: 3px;
-      transition: 0.2s;
-    }
-
-    input[type="checkbox"].toggle:checked::after {
-      left: 23px;
-    }
-
-    .control-group {
-      margin-bottom: 12px;
-    }
-
-    .control-group label {
+    .ctrl-row label {
       display: flex;
       justify-content: space-between;
-      font-size: 0.8rem;
+      font-size: 0.67rem;
       color: var(--muted);
-      margin-bottom: 5px;
+      margin-bottom: 3px;
     }
 
     select, textarea {
       width: 100%;
-      background: #0b0f17;
+      background: #080c13;
       color: var(--text);
       border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 9px 11px;
-      font-size: 0.86rem;
+      border-radius: 5px;
+      padding: 6px 8px;
+      font-size: 0.72rem;
       outline: none;
+      user-select: text;
     }
-
     select:focus, textarea:focus {
       border-color: var(--neon);
     }
@@ -350,211 +395,155 @@
     input[type="range"] {
       width: 100%;
       accent-color: var(--neon);
+      height: 14px;
       cursor: pointer;
     }
 
-    textarea#manualText {
-      min-height: 92px;
-      resize: vertical;
-      margin-bottom: 10px;
-      line-height: 1.4;
+    textarea#miniText {
+      height: 68px;
+      resize: none;
+      margin-bottom: 6px;
     }
 
-    /* Histórico de Transmissões */
-    .history-list {
-      max-height: 280px;
+    .hist-box {
+      max-height: 160px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
     }
 
-    .history-card {
-      background: #0d121b;
-      border: 1px solid #1e293b;
-      border-radius: 7px;
-      padding: 10px 12px;
-      font-size: 0.82rem;
+    .h-item {
+      background: #0a0f18;
+      border: 1px solid #1e293d;
+      border-radius: 5px;
+      padding: 6px 8px;
+      font-size: 0.69rem;
     }
-
-    .history-meta {
+    .h-meta {
       display: flex;
       justify-content: space-between;
       color: var(--cyan);
-      font-size: 0.73rem;
-      margin-bottom: 5px;
+      font-size: 0.62rem;
+      margin-bottom: 3px;
     }
-
-    .history-text {
+    .h-txt {
       color: #cbd5e1;
-      line-height: 1.38;
-      margin-bottom: 8px;
+      line-height: 1.3;
+      margin-bottom: 5px;
+      user-select: text;
     }
-
-    .history-actions {
-      display: flex;
-      gap: 8px;
-    }
-
-    .mini-btn {
-      background: #1a2436;
+    .h-btn {
+      background: #162133;
       color: var(--neon);
-      border: 1px solid #2d3f5e;
-      padding: 4px 10px;
+      border: 1px solid #2b3f5c;
+      padding: 2px 7px;
       border-radius: 4px;
-      font-size: 0.74rem;
+      font-size: 0.63rem;
       cursor: pointer;
       text-decoration: none;
-    }
-
-    .mini-btn:hover {
-      background: #24334d;
+      display: inline-block;
     }
   </style>
 </head>
 <body>
-  <div class="device-chassis">
-    <div class="screw tl"></div>
-    <div class="screw tr"></div>
-    <div class="screw bl"></div>
-    <div class="screw br"></div>
+  <div id="playerRoot" class="player-wrapper">
+    <!-- Botão Mágico para destacar como Janelinha Flutuante sem abas de navegador -->
+    <button class="popout-banner" onclick="launchFloatingMiniPlayer()">
+      🚀 DESTACAR MINI-PLAYER PEQUENO (SEM ABA / NO TOPO)
+    </button>
 
-    <div class="header-bar">
-      <div class="brand-title">
-        <div id="statusLed" class="led-indicator"></div>
-        <div>
-          <h1>TYON-V45 // UNIDADE DUAL-VOICE (COOK45 + NIKO)</h1>
-          <span class="sub" id="statusSub">ONLINE — ESCUTANDO COOK45 + NIKO EM TEMPO REAL</span>
-        </div>
-      </div>
-      <div class="badge-row">
-        <a href="/mini.html" class="hw-badge" style="text-decoration:none; color:var(--neon); border-color:var(--neon); font-weight:bold;">
-          📱 ABRIR MODO MINI-PLAYER
-        </a>
-        <div class="hw-badge" id="engineBadge">ENGINE: DUAL-MALE NEURAL</div>
-        <div class="hw-badge" id="queueBadge">FILA: 0</div>
-      </div>
-    </div>
+    <div class="player-shell" id="playerShell">
+      <div class="screw tl"></div>
+      <div class="screw tr"></div>
+      <div class="screw bl"></div>
+      <div class="screw br"></div>
 
-    <div class="main-grid">
-      <!-- Coluna Esquerda: Osciloscópio + Transmissor Manual + Histórico -->
-      <div>
-        <div class="module-box">
-          <div class="module-header">
-            <span>OSCILOSCÓPIO DE ÁUDIO // SAÍDA ACÚSTICA</span>
-            <span id="voiceActiveLabel">pt-BR-AntonioNeural</span>
-          </div>
-          <div class="scope-screen">
-            <canvas id="scopeCanvas" width="600" height="150"></canvas>
-            <div class="scope-overlay">
-              <span id="scopeStateText">SINAL: PRONTO</span>
-              <span id="scopeFreqText">CH1 // 24kHz NEURAL</span>
-            </div>
-          </div>
-          <div class="live-caption" id="liveCaption">
-            Aguardando nova resposta do cook45 no chat ou comando manual...
-          </div>
-
-          <div class="btn-row" style="grid-template-columns: repeat(4, 1fr);">
-            <button class="hw-btn primary" onclick="readLastChat()">
-              🔊 LER COOK45
-            </button>
-            <button class="hw-btn" style="border-color:var(--cyan); color:var(--cyan);" onclick="readLastNiko()">
-              🤖 LER NIKO
-            </button>
-            <button class="hw-btn" onclick="testCookVoice()">
-              ⚡ TESTAR 2 VOZES
-            </button>
-            <button class="hw-btn danger" onclick="stopVoice()">
-              ⏹ PARAR
-            </button>
+      <!-- Cabeçalho do Mini Player -->
+      <div class="top-bar" id="dragHeader" title="Arraste para mover ou clique em Destacar">
+        <div class="brand">
+          <div id="led" class="led"></div>
+          <div>
+            <span class="brand-title">TYON-V45 // COOK45 + NIKO</span>
+            <span class="brand-sub" id="statusTxt">DUAL-MALE NEURAL ATIVO</span>
           </div>
         </div>
-
-        <div class="module-box">
-          <div class="module-header">
-            <span>TRANSMISSOR DIRETO // DIGITE OU COLE TEXTO PARA OUVIR</span>
-            <span>MODO MANUAL</span>
-          </div>
-          <textarea id="manualText" placeholder="Cole ou digite qualquer texto aqui para ouvir na voz do cook45 imediatamente..."></textarea>
-          <div style="display:flex; gap:10px;">
-            <button class="hw-btn primary" style="flex:1;" onclick="speakManual()">
-              🎙️ FALAR TEXTO AGORA
-            </button>
-            <button class="hw-btn" onclick="document.getElementById('manualText').value=''">
-              LIMPAR
-            </button>
-          </div>
-        </div>
-
-        <div class="module-box">
-          <div class="module-header">
-            <span>HISTÓRICO DE FALAS DO COOK45</span>
-            <span id="historyCount">0 registros</span>
-          </div>
-          <div class="history-list" id="historyList">
-            <div style="color:var(--muted); font-size:0.82rem;">Nenhuma fala registrada ainda.</div>
-          </div>
+        <div class="top-actions">
+          <button id="btnCompact" class="icon-btn" onclick="toggleCompactMode()" title="Encolher/Expandir gavetas">
+            ➖ MINI
+          </button>
+          <button id="btnPin" class="icon-btn active" onclick="launchFloatingMiniPlayer()" title="Destacar janela pequena sempre no topo">
+            🪟 SOLTAR
+          </button>
         </div>
       </div>
 
-      <!-- Coluna Direita: Sensores Automáticos + Ajuste de Timbre -->
-      <div>
-        <div class="module-box">
-          <div class="module-header">
-            <span>SENSORES DE INTERCEPTAÇÃO AUTOMÁTICA</span>
-            <span>TEMPO REAL</span>
-          </div>
+      <!-- Visor LCD + Osciloscópio + Analisador -->
+      <div class="lcd-screen">
+        <canvas id="miniScope" width="330" height="82"></canvas>
+        <div class="lcd-info">
+          <span id="voiceLabel">COOK45: Antonio (-8Hz)</span>
+          <span id="kiloLabel" style="color:var(--cyan);">NIKO: Brian (-2Hz)</span>
+        </div>
+        <div class="lcd-marquee" id="captionBar">
+          Pronto — tudo que o cook45 e o Niko responderem você ouve aqui!
+        </div>
+      </div>
 
-          <div class="switch-list">
-            <div class="switch-item">
-              <label for="chkEnabled">
-                <strong>CHAVE GERAL DE VOZ (MASTER)</strong>
-                <small>Ativa/desativa a saída de som do dispositivo</small>
-              </label>
-              <input type="checkbox" id="chkEnabled" class="toggle" checked onchange="saveConfig()" />
-            </div>
+      <!-- Botões Principais estilo Media Player -->
+      <div class="transport-bar">
+        <button class="t-btn play" onclick="readLast()">
+          ▶ COOK45
+        </button>
+        <button class="t-btn niko" onclick="readLastKilo()">
+          🤖 LER NIKO
+        </button>
+        <button class="t-btn" onclick="testVoice()">
+          ⚡ TESTAR
+        </button>
+        <button class="t-btn stop" onclick="stopAudio()">
+          ⏹ PARAR
+        </button>
+      </div>
 
-            <div class="switch-item">
-              <label for="chkAutoChat">
-                <strong>AUTO-LER CHAT DO COOK45 (DIREITA)</strong>
-                <small>Lê automaticamente cada resposta do cook45 com voz grave</small>
-              </label>
-              <input type="checkbox" id="chkAutoChat" class="toggle" checked onchange="saveConfig()" />
-            </div>
+      <!-- Chaves Rápidas -->
+      <div class="quick-toggles">
+        <div id="pillPower" class="q-pill on" onclick="toggleFlag('enabled')">
+          🔊 SOM: ON
+        </div>
+        <div id="pillChat" class="q-pill on" onclick="toggleFlag('auto_read_chat')">
+          💬 COOK: ON
+        </div>
+        <div id="pillKilo" class="q-pill on-niko" onclick="toggleFlag('auto_read_kilo')">
+          🤖 NIKO: ON
+        </div>
+        <div id="pillClip" class="q-pill" onclick="toggleFlag('clipboard_watch')">
+          📋 CTRL+C
+        </div>
+      </div>
 
-            <div class="switch-item">
-              <label for="chkAutoKilo">
-                <strong style="color:var(--cyan);">AUTO-LER CHAT DO NIKO / KILO (ESQUERDA)</strong>
-                <small>Lê automaticamente o Niko com a 2ª voz masculina</small>
-              </label>
-              <input type="checkbox" id="chkAutoKilo" class="toggle" checked onchange="saveConfig()" />
-            </div>
-
-            <div class="switch-item">
-              <label for="chkClipboard">
-                <strong>MODO CLIPBOARD (CTRL + C)</strong>
-                <small>Qualquer texto que você copiar no Windows será lido em voz alta</small>
-              </label>
-              <input type="checkbox" id="chkClipboard" class="toggle" onchange="saveConfig()" />
-            </div>
-          </div>
+      <!-- Corpo Expansível -->
+      <div id="expandableBody">
+        <div class="tabs-bar">
+          <button class="tab-btn active" id="tabBtn-voice" onclick="openTab('voice')">🎛️ VOZ/TOM</button>
+          <button class="tab-btn" id="tabBtn-speak" onclick="openTab('speak')">🎙️ DIGITAR</button>
+          <button class="tab-btn" id="tabBtn-hist" onclick="openTab('hist')">📜 HISTÓRICO</button>
         </div>
 
-        <div class="module-box">
-          <div class="module-header">
-            <span>MODULADOR DE TIMBRE // COOK45 vs NIKO</span>
-            <span>DUAL-MALE DSP</span>
+        <!-- Gaveta 1: Voz do Cook45 + Voz do Niko + Sliders -->
+        <div class="drawer open" id="drawer-voice">
+          <div class="ctrl-row">
+            <label><span style="color:var(--neon); font-weight:bold;">VOZ DO COOK45 (DIREITA):</span></label>
+            <select id="selVoice" onchange="onPresetChange()">
+              <option value="pt-BR-AntonioNeural" data-pitch="-8" data-rate="10">Cook45 Veterano (Antonio PT-BR - Grave -8Hz)</option>
+              <option value="pt-BR-AntonioNeural" data-pitch="-12" data-rate="8">Cook45 Subgrave Pesado (Antonio -12Hz)</option>
+              <option value="en-US-AndrewMultilingualNeural" data-pitch="-6" data-rate="10">Cook45 Andrew (Masculino Encorpado -6Hz)</option>
+            </select>
           </div>
 
-          <div class="control-group">
-            <label><span style="color:var(--neon); font-weight:bold;">VOZ DO COOK45 (DIREITA)</span></label>
-            <select id="selVoice" onchange="onVoicePresetChange()"></select>
-          </div>
-
-          <div class="control-group">
-            <label><span style="color:var(--cyan); font-weight:bold;">VOZ MASCULINA DO NIKO / KILO (ESQUERDA)</span></label>
-            <select id="selKiloVoice" onchange="saveConfig()">
+          <div class="ctrl-row">
+            <label><span style="color:var(--cyan); font-weight:bold;">VOZ DO NIKO / KILO CODE (ESQUERDA):</span></label>
+            <select id="selKiloVoice" onchange="onKiloPresetChange()">
               <option value="en-US-BrianMultilingualNeural" data-pitch="-2Hz" data-rate="+12%">Niko Masculino 1 (Brian Neural - Outro Homem)</option>
               <option value="en-US-AndrewMultilingualNeural" data-pitch="-3Hz" data-rate="+12%">Niko Masculino 2 (Andrew Neural - Firme)</option>
               <option value="pt-BR-AntonioNeural" data-pitch="+6Hz" data-rate="+16%">Niko Masculino 3 (Antonio Jovem Rápido +6Hz)</option>
@@ -563,60 +552,138 @@
             </select>
           </div>
 
-          <div class="control-group">
-            <label>
-              <span>VELOCIDADE DA FALA (RATE)</span>
-              <strong id="lblRate">+12%</strong>
-            </label>
-            <input type="range" id="rngRate" min="-25" max="45" value="12" oninput="updateSliders()" onchange="saveConfig()" />
+          <div class="ctrl-row">
+            <label><span>VELOCIDADE (RATE)</span><strong id="lblRate">+10%</strong></label>
+            <input type="range" id="rngRate" min="-25" max="45" value="10" oninput="syncLabels()" onchange="pushConfig()" />
           </div>
-
-          <div class="control-group">
-            <label>
-              <span>GRAVE / TOM DA VOZ (PITCH)</span>
-              <strong id="lblPitch">-6Hz</strong>
-            </label>
-            <input type="range" id="rngPitch" min="-20" max="15" value="-6" oninput="updateSliders()" onchange="saveConfig()" />
+          <div class="ctrl-row">
+            <label><span>GRAVE / PITCH</span><strong id="lblPitch">-8Hz</strong></label>
+            <input type="range" id="rngPitch" min="-20" max="15" value="-8" oninput="syncLabels()" onchange="pushConfig()" />
           </div>
-
-          <div class="control-group">
-            <label>
-              <span>VOLUME DE SAÍDA (HARDWARE)</span>
-              <strong id="lblVol">100%</strong>
-            </label>
-            <input type="range" id="rngVol" min="10" max="100" value="100" oninput="updateSliders()" onchange="saveConfig()" />
+          <div class="ctrl-row">
+            <label><span>VOLUME</span><strong id="lblVol">100%</strong></label>
+            <input type="range" id="rngVol" min="10" max="100" value="100" oninput="syncLabels()" onchange="pushConfig()" />
           </div>
         </div>
 
-        <div class="module-box">
-          <div class="module-header">
-            <span>ANÁLISE DO VÍDEO (YOUTUBE) // ARQUITETURA</span>
-            <span>INFO</span>
+        <!-- Gaveta 2: Transmissor de Texto Manual -->
+        <div class="drawer" id="drawer-speak">
+          <textarea id="miniText" placeholder="Cole ou digite qualquer texto aqui para ouvir..."></textarea>
+          <div style="display:flex; gap:6px;">
+            <button class="t-btn play" style="flex:1;" onclick="speakCustom()">🎙️ FALAR AGORA</button>
+            <button class="t-btn" onclick="document.getElementById('miniText').value=''">LIMPAR</button>
           </div>
-          <div style="font-size:0.79rem; color:#94a3b8; line-height:1.5;">
-            <p style="margin-bottom:8px;">
-              <strong style="color:var(--neon);">✔ Vídeo analisado:</strong> <em>"10 Repositórios Grátis do GitHub"</em> (cita <strong>VoiceStudio</strong> e <strong>Voicebox</strong>).
-            </p>
-            <p style="margin-bottom:8px;">
-              <strong style="color:var(--amber);">⚡ Otimizado para sua GPU (Intel UHD 630):</strong> Modelos pesados de clonagem exigem placa NVIDIA CUDA. O <strong>TYON-V45</strong> usa síntese Neural de latência zero + interceptação direta do log do Antigravity (<code>transcript.jsonl</code>).
-            </p>
-            <p>
-              <strong style="color:var(--cyan);">🎯 Resultado:</strong> Toda vez que o <strong>cook45</strong> responder no chat, sua caixa de som fala sozinha em menos de 1 segundo!
-            </p>
+        </div>
+
+        <!-- Gaveta 3: Histórico de Áudios com Replay -->
+        <div class="drawer" id="drawer-hist">
+          <div class="hist-box" id="histBox">
+            <div style="color:var(--muted); font-size:0.7rem;">Sem transmissões ainda.</div>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <audio id="browserAudio" style="display:none;"></audio>
+  <audio id="browserPlayer" style="display:none;"></audio>
 
   <script>
-    let isSpeaking = false;
-    let cloudMode = false;
-    let lastPlayedUrl = '';
-    const browserAudio = document.getElementById('browserAudio');
+    let stateCache = {
+      enabled: true,
+      auto_read_chat: true,
+      auto_read_kilo: true,
+      clipboard_watch: false,
+      voice: 'pt-BR-AntonioNeural',
+      rate: '+10%',
+      pitch: '-8Hz',
+      kilo_voice: 'en-US-BrianMultilingualNeural',
+      kilo_rate: '+12%',
+      kilo_pitch: '-2Hz',
+      volume: 100,
+      speaking: false
+    };
+    const browserPlayer = document.getElementById('browserPlayer');
     const LOCAL_BRIDGE = 'http://127.0.0.1:8091';
+
+    // Se já abriu em popup pequeno ou janela de app, ativa o modo flutuante compacto
+    if (window.opener || window.innerWidth <= 420 || location.search.includes('popup=1')) {
+      document.body.classList.add('floating-mode');
+      try { window.resizeTo(372, 575); } catch (e) {}
+    }
+
+    // Destaca o Mini-Player usando Document Picture-in-Picture (Sem Abas e Sempre no Topo!) ou Popup Compacto
+    async function launchFloatingMiniPlayer() {
+      if ('documentPictureInPicture' in window) {
+        try {
+          const pipWin = await window.documentPictureInPicture.requestWindow({
+            width: 368,
+            height: 545
+          });
+          // Copia o estilo para a janela flutuante sem abas
+          const styleClone = document.getElementById('playerStyles').cloneNode(true);
+          pipWin.document.head.appendChild(styleClone);
+          pipWin.document.body.classList.add('floating-mode');
+
+          const shell = document.getElementById('playerShell');
+          pipWin.document.body.appendChild(shell);
+
+          pipWin.addEventListener('pagehide', () => {
+            document.getElementById('playerRoot').appendChild(shell);
+          });
+          return;
+        } catch (err) {
+          console.log('Fallback para popup compacto:', err);
+        }
+      }
+
+      // Fallback Popup Compacto sem barra de abas
+      const w = 368, h = 555;
+      const left = Math.max(10, window.screen.availWidth - w - 20);
+      const top = 70;
+      window.open(
+        location.origin + '/mini.html?popup=1',
+        'TyonMiniPlayerPopup',
+        `popup=yes,width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes`
+      );
+    }
+
+    function toggleCompactMode() {
+      const bodyEl = document.getElementById('expandableBody');
+      const btn = document.getElementById('btnCompact');
+      const isCollapsed = bodyEl.classList.toggle('collapsed');
+      btn.textContent = isCollapsed ? '➕ ABRIR' : '➖ MINI';
+    }
+
+    // Arraste livre quando está na página grande
+    const rootWrapper = document.getElementById('playerRoot');
+    const dragHeader = document.getElementById('dragHeader');
+    let dragging = false, sx = 0, sy = 0, cx = 0, cy = 0;
+
+    dragHeader.addEventListener('mousedown', (e) => {
+      if (e.target.tagName === 'BUTTON' || document.body.classList.contains('floating-mode')) return;
+      dragging = true;
+      sx = e.clientX - cx;
+      sy = e.clientY - cy;
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      cx = e.clientX - sx;
+      cy = e.clientY - sy;
+      rootWrapper.style.transform = `translate(${cx}px, ${cy}px)`;
+    });
+    window.addEventListener('mouseup', () => { dragging = false; });
+
+    function webSpeechFallback(text) {
+      if (!('speechSynthesis' in window) || !text) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'pt-BR';
+      u.rate = 1.1;
+      u.pitch = 0.85;
+      u.onstart = () => { stateCache.speaking = true; };
+      u.onend = () => { stateCache.speaking = false; };
+      window.speechSynthesis.speak(u);
+    }
 
     async function apiFetch(path, opts = {}) {
       if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
@@ -628,49 +695,50 @@
       return await fetch(path, opts);
     }
 
-    // Osciloscópio Canvas
-    const canvas = document.getElementById('scopeCanvas');
-    const ctx = canvas.getContext('2d');
-    let phase = 0;
+    const cvs = document.getElementById('miniScope');
+    const c = cvs.getContext('2d');
+    let ph = 0;
+    function drawScope() {
+      const w = cvs.width, h = cvs.height;
+      c.fillStyle = '#04070b';
+      c.fillRect(0, 0, w, h);
 
-    function renderScope() {
-      const w = canvas.width;
-      const h = canvas.height;
-      ctx.fillStyle = '#05080c';
-      ctx.fillRect(0, 0, w, h);
+      c.strokeStyle = 'rgba(0,255,157,0.06)';
+      for (let x = 0; x < w; x += 24) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, h); c.stroke(); }
 
-      // Grade tática
-      ctx.strokeStyle = 'rgba(0, 255, 157, 0.07)';
-      ctx.lineWidth = 1;
-      for (let x = 0; x < w; x += 30) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-      }
-      for (let y = 0; y < h; y += 30) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-      }
-
-      // Onda
-      ctx.beginPath();
-      ctx.strokeStyle = isSpeaking ? '#ffae00' : '#00ff9d';
-      ctx.lineWidth = 2.4;
-
+      c.beginPath();
+      c.strokeStyle = stateCache.speaking ? '#ffae00' : '#00ff9d';
+      c.lineWidth = 2.2;
       for (let x = 0; x < w; x++) {
-        const normX = x / w;
-        const envelope = Math.sin(normX * Math.PI);
-        let amp = isSpeaking
-          ? (Math.sin(x * 0.05 + phase * 3) * 28 + Math.cos(x * 0.13 - phase * 5) * 18) * envelope
-          : Math.sin(x * 0.03 + phase) * 3 * envelope;
+        const env = Math.sin((x / w) * Math.PI);
+        const amp = stateCache.speaking
+          ? (Math.sin(x * 0.07 + ph * 3) * 18 + Math.cos(x * 0.17 - ph * 4) * 11) * env
+          : Math.sin(x * 0.04 + ph) * 2.2 * env;
         const y = h / 2 + amp;
-        if (x === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        if (x === 0) c.moveTo(x, y); else c.lineTo(x, y);
       }
-      ctx.stroke();
-      phase += isSpeaking ? 0.16 : 0.04;
-      requestAnimationFrame(renderScope);
+      c.stroke();
+      ph += stateCache.speaking ? 0.18 : 0.04;
+      requestAnimationFrame(drawScope);
     }
-    renderScope();
+    drawScope();
 
-    function updateSliders() {
+    function openTab(name) {
+      ['voice', 'speak', 'hist'].forEach(t => {
+        const d = document.getElementById('drawer-' + t);
+        const b = document.getElementById('tabBtn-' + t);
+        if (t === name) {
+          const isAlreadyOpen = d.classList.contains('open');
+          d.classList.toggle('open', !isAlreadyOpen);
+          b.classList.toggle('active', !isAlreadyOpen);
+        } else {
+          d.classList.remove('open');
+          b.classList.remove('active');
+        }
+      });
+    }
+
+    function syncLabels() {
       const r = parseInt(document.getElementById('rngRate').value, 10);
       const p = parseInt(document.getElementById('rngPitch').value, 10);
       const v = parseInt(document.getElementById('rngVol').value, 10);
@@ -679,186 +747,161 @@
       document.getElementById('lblVol').textContent = v + '%';
     }
 
-    function onVoicePresetChange() {
+    function onPresetChange() {
       const sel = document.getElementById('selVoice');
       const opt = sel.options[sel.selectedIndex];
       if (opt && opt.dataset.pitch) {
         document.getElementById('rngPitch').value = parseInt(opt.dataset.pitch, 10);
         document.getElementById('rngRate').value = parseInt(opt.dataset.rate, 10);
-        updateSliders();
+        syncLabels();
       }
-      saveConfig();
+      pushConfig();
     }
 
-    async function saveConfig() {
-      updateSliders();
+    async function onKiloPresetChange() {
+      const sel = document.getElementById('selKiloVoice');
+      const opt = sel.options[sel.selectedIndex];
+      const kv = sel.value;
+      const kp = opt ? (opt.dataset.pitch || '-2Hz') : '-2Hz';
+      const kr = opt ? (opt.dataset.rate || '+12%') : '+12%';
+      await apiFetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kilo_voice: kv, kilo_pitch: kp, kilo_rate: kr })
+      });
+    }
+
+    async function toggleFlag(key) {
+      stateCache[key] = !stateCache[key];
+      renderPills();
+      await apiFetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: stateCache[key] })
+      });
+    }
+
+    function renderPills() {
+      const pPower = document.getElementById('pillPower');
+      pPower.className = 'q-pill' + (stateCache.enabled ? ' on' : '');
+      pPower.textContent = stateCache.enabled ? '🔊 SOM: ON' : '🔇 MUTE';
+
+      const pChat = document.getElementById('pillChat');
+      pChat.className = 'q-pill' + (stateCache.auto_read_chat ? ' on' : '');
+      pChat.textContent = stateCache.auto_read_chat ? '💬 COOK: ON' : '💬 COOK: OFF';
+
+      const pKilo = document.getElementById('pillKilo');
+      pKilo.className = 'q-pill' + (stateCache.auto_read_kilo !== false ? ' on-niko' : '');
+      pKilo.textContent = stateCache.auto_read_kilo !== false ? '🤖 NIKO: ON' : '🤖 NIKO: OFF';
+
+      const pClip = document.getElementById('pillClip');
+      pClip.className = 'q-pill' + (stateCache.clipboard_watch ? ' on' : '');
+      pClip.textContent = stateCache.clipboard_watch ? '📋 CTRL+C: ON' : '📋 CTRL+C';
+    }
+
+    async function pushConfig() {
+      syncLabels();
       const r = parseInt(document.getElementById('rngRate').value, 10);
       const p = parseInt(document.getElementById('rngPitch').value, 10);
       const v = parseInt(document.getElementById('rngVol').value, 10);
-
-      const kSel = document.getElementById('selKiloVoice');
-      const kOpt = kSel ? kSel.options[kSel.selectedIndex] : null;
-
-      const cfg = {
-        enabled: document.getElementById('chkEnabled').checked,
-        auto_read_chat: document.getElementById('chkAutoChat').checked,
-        auto_read_kilo: document.getElementById('chkAutoKilo') ? document.getElementById('chkAutoKilo').checked : true,
-        clipboard_watch: document.getElementById('chkClipboard').checked,
-        voice: document.getElementById('selVoice').value,
-        kilo_voice: kSel ? kSel.value : 'en-US-BrianMultilingualNeural',
-        kilo_pitch: kOpt ? (kOpt.dataset.pitch || '-2Hz') : '-2Hz',
-        kilo_rate: kOpt ? (kOpt.dataset.rate || '+12%') : '+12%',
-        rate: (r >= 0 ? '+' : '') + r + '%',
-        pitch: (p >= 0 ? '+' : '') + p + 'Hz',
-        volume: v
-      };
-
-      try {
-        await apiFetch('/api/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(cfg)
-        });
-      } catch (e) {}
-    }
-
-    function browserFallbackSpeak(text) {
-      if (!('speechSynthesis' in window)) return;
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'pt-BR';
-      u.rate = 1.12;
-      u.pitch = 0.88;
-      u.onstart = () => { isSpeaking = true; };
-      u.onend = () => { isSpeaking = false; };
-      window.speechSynthesis.speak(u);
-    }
-
-    async function speakManual() {
-      const text = document.getElementById('manualText').value.trim();
-      if (!text) return;
-      document.getElementById('liveCaption').textContent = text;
-      if (cloudMode) {
-        browserFallbackSpeak(text);
-        return;
-      }
-      await apiFetch('/api/speak', {
+      await apiFetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, source: 'Painel Manual', play_on_host: true })
+        body: JSON.stringify({
+          voice: document.getElementById('selVoice').value,
+          rate: (r >= 0 ? '+' : '') + r + '%',
+          pitch: (p >= 0 ? '+' : '') + p + 'Hz',
+          volume: v
+        })
       });
     }
 
-    async function testCookVoice() {
-      const sample = 'Fala clack! Aqui é o cook45. O nosso dispositivo de voz está calibrado e pronto para o combate. Qualquer código ou resposta que eu mandar no chat você vai escutar em tempo real.';
-      document.getElementById('liveCaption').textContent = sample;
-      if (cloudMode) {
-        browserFallbackSpeak(sample);
-        return;
-      }
-      await apiFetch('/api/speak', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: sample, source: 'Teste de Timbre', play_on_host: true })
-      });
-    }
-
-    async function readLastChat() {
-      if (cloudMode) {
-        browserFallbackSpeak('Modo nuvem ativo. Conecte ao daemon local no seu PC para ler o chat do Antigravity.');
-        return;
-      }
+    async function readLast() {
       await apiFetch('/api/read_last', { method: 'POST' });
     }
 
-    async function readLastNiko() {
-      if (cloudMode) {
-        browserFallbackSpeak('Lendo última mensagem do Niko em modo nuvem.');
-        return;
-      }
+    async function readLastKilo() {
       await apiFetch('/api/read_last_kilo', { method: 'POST' });
     }
 
-    async function stopVoice() {
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-      browserAudio.pause();
-      isSpeaking = false;
-      try {
-        await apiFetch('/api/stop', { method: 'POST' });
-      } catch (e) {}
+    async function testVoice() {
+      const text = 'Aqui é o cook45 na voz grave veterana. E o Niko também está conectado na segunda linha masculina!';
+      document.getElementById('captionBar').textContent = text;
+      const res = await apiFetch('/api/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, source: 'Mini Player Teste', play_on_host: true })
+      });
+      const d = await res.json();
+      if (d.cloud_speak) webSpeechFallback(d.cloud_speak);
+      else await apiFetch('/api/read_last_kilo', { method: 'POST' });
     }
 
-    function playAudioInBrowser(url) {
+    async function speakCustom() {
+      const text = document.getElementById('miniText').value.trim();
+      if (!text) return;
+      document.getElementById('captionBar').textContent = text;
+      const res = await apiFetch('/api/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, source: 'Mini Player Manual', play_on_host: true })
+      });
+      const d = await res.json();
+      if (d.cloud_speak) webSpeechFallback(d.cloud_speak);
+    }
+
+    async function stopAudio() {
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      browserPlayer.pause();
+      await apiFetch('/api/stop', { method: 'POST' });
+    }
+
+    function replayUrl(url) {
       if (!url) return;
       const base = (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') ? LOCAL_BRIDGE : '';
-      browserAudio.src = base + url + '?t=' + Date.now();
-      browserAudio.play().catch(() => {});
+      browserPlayer.src = base + url + '?t=' + Date.now();
+      browserPlayer.play().catch(() => {});
     }
 
-    let voicesPopulated = false;
-    async function pollState() {
+    async function poll() {
       try {
         const res = await apiFetch('/api/state');
         const data = await res.json();
-        cloudMode = !!data.cloud_mode;
         const st = data.state;
+        stateCache = st;
 
-        if (!voicesPopulated && data.voices) {
-          const sel = document.getElementById('selVoice');
-          sel.innerHTML = '';
-          data.voices.forEach(v => {
-            const opt = document.createElement('option');
-            opt.value = v.id;
-            opt.textContent = v.name;
-            opt.dataset.pitch = v.pitch;
-            opt.dataset.rate = v.rate;
-            if (v.id === st.voice) opt.selected = true;
-            sel.appendChild(opt);
-          });
-          voicesPopulated = true;
-        }
+        const led = document.getElementById('led');
+        led.className = 'led' + (!st.enabled ? ' off' : (st.speaking ? ' speaking' : ''));
+        document.getElementById('statusTxt').textContent = !st.enabled
+          ? 'MUTE ATIVO'
+          : (st.speaking ? 'TRANSMITINDO ÁUDIO...' : 'COOK45 + NIKO ATIVOS');
 
-        isSpeaking = !!st.speaking;
-        const led = document.getElementById('statusLed');
-        led.className = 'led-indicator' + (!st.enabled ? ' off' : (st.speaking ? ' speaking' : ''));
-
-        document.getElementById('statusSub').textContent = !st.enabled
-          ? 'DESATIVADO (MUTE ATIVO)'
-          : (st.speaking ? 'TRANSMITINDO VOZ DO COOK45...' : 'ONLINE — ESCUTANDO CHAT DO COOK45 EM TEMPO REAL');
-
-        document.getElementById('scopeStateText').textContent = st.speaking ? 'SINAL: TRANSMITINDO ÁUDIO' : 'SINAL: MONITORANDO CHAT';
-        document.getElementById('voiceActiveLabel').textContent = st.voice;
-        document.getElementById('engineBadge').textContent = 'ENGINE: ' + (st.engine || 'NEURAL');
-        document.getElementById('queueBadge').textContent = 'FILA: ' + (data.queue_size || 0);
+        document.getElementById('voiceLabel').textContent = 'COOK45: ' + (st.voice || '').replace('pt-BR-', '').replace('en-US-', '').replace('Neural', '');
+        document.getElementById('kiloLabel').textContent = 'NIKO: ' + (st.kilo_voice || 'Brian').replace('en-US-', '').replace('pt-BR-', '').replace('MultilingualNeural', '').replace('Neural', '');
 
         if (st.current_text) {
-          document.getElementById('liveCaption').textContent = st.current_text;
+          document.getElementById('captionBar').textContent = st.current_text;
         }
 
-        if (st.history) {
-          document.getElementById('historyCount').textContent = st.history.length + ' registros';
-          const hList = document.getElementById('historyList');
-          if (st.history.length > 0) {
-            hList.innerHTML = st.history.map(item => `
-              <div class="history-card">
-                <div class="history-meta">
-                  <span>[${item.timestamp}] ${item.source}</span>
-                  <span>${item.voice}</span>
-                </div>
-                <div class="history-text">${item.text}</div>
-                <div class="history-actions">
-                  ${item.audio_url ? `<button class="mini-btn" onclick="playAudioInBrowser('${item.audio_url}')">▶ OUVIR NO NAVEGADOR</button>` : ''}
-                  ${item.audio_url ? `<a class="mini-btn" href="${item.audio_url}" download>⬇ BAIXAR MP3</a>` : ''}
-                </div>
+        renderPills();
+
+        if (st.history && st.history.length > 0) {
+          document.getElementById('histBox').innerHTML = st.history.slice(0, 12).map(h => `
+            <div class="h-item">
+              <div class="h-meta"><span>[${h.timestamp}] ${h.source}</span></div>
+              <div class="h-txt">${h.text}</div>
+              <div>
+                ${h.audio_url ? `<button class="h-btn" onclick="replayUrl('${h.audio_url}')">▶ OUVIR</button>` : ''}
+                ${h.audio_url ? `<a class="h-btn" href="${h.audio_url}" download>⬇ MP3</a>` : ''}
               </div>
-            `).join('');
-          }
+            </div>
+          `).join('');
         }
       } catch (e) {}
     }
 
-    setInterval(pollState, 600);
-    pollState();
+    setInterval(poll, 600);
+    poll();
   </script>
 </body>
 </html>
