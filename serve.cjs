@@ -160,7 +160,8 @@ const server = http.createServer((req, res) => {
     return proxyToDaemon(req, res);
   }
 
-  let filePath = req.url === '/' ? '/index.html' : req.url.split('?')[0];
+  const cleanUrl = req.url.split('?')[0];
+  let filePath = (cleanUrl === '/' || cleanUrl === '') ? '/index.html' : cleanUrl;
   const fullPath = path.join(__dirname, filePath);
 
   if (!fullPath.startsWith(__dirname)) {
