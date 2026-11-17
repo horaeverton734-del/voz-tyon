@@ -533,6 +533,22 @@
         ▶ PLAY LIGADO — ÁUDIO ATIVO
       </button>
 
+      <!-- Barra de Controle de Música (Aparece/Controla Músicas do PC direto no Player) -->
+      <div id="musicControlsBar" class="transport-bar" style="margin-bottom:6px;">
+        <button class="t-btn" onclick="musicPrev()" title="Música anterior">
+          ⏮ ANT.
+        </button>
+        <button id="btnMusicPause" class="t-btn" style="border-color:var(--amber); color:var(--amber);" onclick="musicPause()">
+          ⏯ PAUSAR MÚSICA
+        </button>
+        <button class="t-btn" onclick="musicNext()" title="Próxima música">
+          ⏭ PRÓX.
+        </button>
+        <button class="t-btn stop" onclick="stopAudio()" title="Parar música e fala">
+          ⏹ PARAR
+        </button>
+      </div>
+
       <!-- Botões Principais estilo Media Player -->
       <div class="transport-bar">
         <button class="t-btn play" onclick="readLast()">
@@ -988,6 +1004,18 @@
       await apiFetch('/api/stop', { method: 'POST' });
     }
 
+    async function musicPause() {
+      await apiFetch('/api/pc/music/pause', { method: 'POST' });
+    }
+
+    async function musicNext() {
+      await apiFetch('/api/pc/music/next', { method: 'POST' });
+    }
+
+    async function musicPrev() {
+      await apiFetch('/api/pc/music/prev', { method: 'POST' });
+    }
+
     function replayUrl(url) {
       if (!url) return;
       const base = (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') ? LOCAL_BRIDGE : '';
@@ -1020,10 +1048,14 @@
         document.getElementById('kiloLabel').textContent = 'NIKO: ' + (st.kilo_voice || 'Brian').replace('en-US-', '').replace('pt-BR-', '').replace('MultilingualNeural', '').replace('Neural', '');
 
         const capEl = document.getElementById('captionBar');
+        const pauseBtn = document.getElementById('btnMusicPause');
+        if (pauseBtn) {
+          pauseBtn.textContent = st.music_paused ? '▶ RETOMAR' : '⏯ PAUSAR';
+        }
         if (st.current_music) {
           capEl.style.color = 'var(--amber)';
           capEl.style.borderLeftColor = 'var(--amber)';
-          capEl.textContent = '🎵 TOCANDO AGORA: ' + st.current_music;
+          capEl.textContent = (st.music_paused ? '⏸ PAUSADA: ' : '🎵 TOCANDO: ') + st.current_music;
         } else if (st.current_text) {
           capEl.style.color = '#e2e8f0';
           capEl.style.borderLeftColor = 'var(--neon)';

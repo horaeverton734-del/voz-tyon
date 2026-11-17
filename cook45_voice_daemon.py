@@ -44,6 +44,7 @@ DEVICE_STATE = {
     "recording": False,
     "last_transcript": "",
     "current_music": "",
+    "music_paused": False,
     "current_text": "",
     "last_audio_url": "",
     "last_step_key": "",
@@ -148,12 +149,34 @@ def mci_send(cmd: str) -> str:
     return buf.value
 
 MUSIC_STOP_FLAG = False
+MUSIC_PAUSED = False
 MUSIC_THREAD = None
+MUSIC_PLAYLIST = []
+MUSIC_INDEX = 0
+
+def load_music_playlist(current_file: str = ""):
+    global MUSIC_PLAYLIST, MUSIC_INDEX
+    tracks = []
+    for base_f in (r"C:\musica", r"C:\musicas 2", os.path.expanduser(r"~\Music")):
+        if os.path.isdir(base_f):
+            for root, _, files in os.walk(base_f):
+                for fn in sorted(files):
+                    if fn.lower().endswith((".mp3", ".wav", ".m4a", ".flac", ".ogg", ".wma")):
+                        tracks.append(os.path.join(root, fn))
+    if tracks:
+        MUSIC_PLAYLIST = tracks
+        if current_file:
+            abs_c = os.path.abspath(current_file).lower()
+            for i, t in enumerate(MUSIC_PLAYLIST):
+                if os.path.abspath(t).lower() == abs_c:
+                    MUSIC_INDEX = i
+                    break
 
 def stop_audio_playback():
-    global STOP_REQUESTED, MUSIC_STOP_FLAG
+    global STOP_REQUESTED, MUSIC_STOP_FLAG, MUSIC_PAUSED
     STOP_REQUESTED = True
     MUSIC_STOP_FLAG = True
+    MUSIC_PAUSED = False
     try:
         mci_send("stop cook45_voice")
         mci_send("close cook45_voice")
@@ -163,22 +186,27 @@ def stop_audio_playback():
         pass
     DEVICE_STATE["speaking"] = False
     DEVICE_STATE["current_music"] = ""
+    DEVICE_STATE["music_paused"] = False
 
 def play_music_winmm(filepath: str, volume: int = 85):
-    """Toca qualquer formato de musica direto via PyAV + sounddevice em thread dedicada (zero lag)."""
-    global MUSIC_STOP_FLAG, MUSIC_THREAD
+    """Toca qualquer formato de musica direto via PyAV + sounddevice com pause, avancar e voltar."""
+    global MUSIC_STOP_FLAG, MUSIC_PAUSED, MUSIC_THREAD
     MUSIC_STOP_FLAG = True
     time.sleep(0.08)
     MUSIC_STOP_FLAG = False
+    MUSIC_PAUSED = False
+    DEVICE_STATE["music_paused"] = False
 
     abs_path = os.path.abspath(filepath)
     if not os.path.exists(abs_path):
         return False
 
+    load_music_playlist(abs_path)
     DEVICE_STATE["current_music"] = os.path.basename(abs_path)
 
     def _music_worker():
-        global MUSIC_STOP_FLAG
+        global MUSIC_STOP_FLAG, MUSIC_INDEX
+        finished_naturally = False
         try:
             import av
             import numpy as np
@@ -194,6 +222,10 @@ def play_music_winmm(filepath: str, volume: int = 85):
                 for frame in container.decode(audio=0):
                     if MUSIC_STOP_FLAG:
                         break
+                    while MUSIC_PAUSED and not MUSIC_STOP_FLAG:
+                        time.sleep(0.08)
+                    if MUSIC_STOP_FLAG:
+                        break
                     for resampled in resampler.resample(frame):
                         if MUSIC_STOP_FLAG:
                             break
@@ -202,11 +234,16 @@ def play_music_winmm(filepath: str, volume: int = 85):
                             arr = arr.T
                         vol_gain = max(0.0, min(1.0, DEVICE_STATE.get("volume", volume) / 100.0))
                         out_stream.write(np.ascontiguousarray(arr * vol_gain, dtype=np.float32))
+                if not MUSIC_STOP_FLAG:
+                    finished_naturally = True
             container.close()
         except Exception as e:
             print(f"[ERR] Falha ao tocar musica: {e}")
         finally:
-            if not MUSIC_STOP_FLAG:
+            if finished_naturally and MUSIC_PLAYLIST:
+                MUSIC_INDEX = (MUSIC_INDEX + 1) % len(MUSIC_PLAYLIST)
+                threading.Thread(target=lambda: play_music_winmm(MUSIC_PLAYLIST[MUSIC_INDEX]), daemon=True).start()
+            elif not MUSIC_STOP_FLAG:
                 DEVICE_STATE["current_music"] = ""
 
     MUSIC_THREAD = threading.Thread(target=_music_worker, daemon=True)
@@ -877,6 +914,31 @@ class VoiceDaemonHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 DEVICE_STATE["recording"] = False
                 return self._send_json({"ok": False, "error": str(e)}, 500)
+
+        elif parsed.path == "/api/pc/music/pause":
+            global MUSIC_PAUSED
+            MUSIC_PAUSED = not MUSIC_PAUSED
+            DEVICE_STATE["music_paused"] = MUSIC_PAUSED
+            return self._send_json({"ok": True, "paused": MUSIC_PAUSED})
+
+        elif parsed.path == "/api/pc/music/next":
+            global MUSIC_INDEX
+            if not MUSIC_PLAYLIST:
+                load_music_playlist()
+            if not MUSIC_PLAYLIST:
+                return self._send_json({"ok": False, "error": "Sem musicas na pasta"}, 404)
+            MUSIC_INDEX = (MUSIC_INDEX + 1) % len(MUSIC_PLAYLIST)
+            play_music_winmm(MUSIC_PLAYLIST[MUSIC_INDEX], DEVICE_STATE.get("volume", 90))
+            return self._send_json({"ok": True, "track": os.path.basename(MUSIC_PLAYLIST[MUSIC_INDEX])})
+
+        elif parsed.path == "/api/pc/music/prev":
+            if not MUSIC_PLAYLIST:
+                load_music_playlist()
+            if not MUSIC_PLAYLIST:
+                return self._send_json({"ok": False, "error": "Sem musicas na pasta"}, 404)
+            MUSIC_INDEX = (MUSIC_INDEX - 1) % len(MUSIC_PLAYLIST)
+            play_music_winmm(MUSIC_PLAYLIST[MUSIC_INDEX], DEVICE_STATE.get("volume", 90))
+            return self._send_json({"ok": True, "track": os.path.basename(MUSIC_PLAYLIST[MUSIC_INDEX])})
 
         elif parsed.path == "/api/pc/open":
             if not DEVICE_STATE.get("pc_control", True):
