@@ -1003,22 +1003,31 @@
         stateCache = st;
 
         const led = document.getElementById('led');
-        led.className = 'led' + (!st.enabled ? ' off' : (st.speaking ? ' speaking' : ''));
+        const isActiveAudio = !!(st.speaking || st.current_music);
+        stateCache.speaking = isActiveAudio;
+        led.className = 'led' + (!st.enabled ? ' off' : (isActiveAudio ? ' speaking' : ''));
         if (data.cloud_mode) {
           document.getElementById('statusTxt').textContent = 'MODO NUVEM (ABRA PELO ATALHO LOCAL P/ CONTROLAR O PC)';
           document.getElementById('statusTxt').style.color = 'var(--amber)';
         } else {
-          document.getElementById('statusTxt').style.color = st.enabled ? 'var(--neon)' : 'var(--danger)';
-          document.getElementById('statusTxt').textContent = !st.enabled
-            ? 'PLAY DESLIGADO (SILENCIOSO)'
-            : (st.speaking ? 'TRANSMITINDO ÁUDIO...' : 'PLAY LIGADO — ESCUTANDO');
+          document.getElementById('statusTxt').style.color = st.current_music ? 'var(--amber)' : (st.enabled ? 'var(--neon)' : 'var(--danger)');
+          document.getElementById('statusTxt').textContent = st.current_music
+            ? '🎵 TOCANDO MÚSICA NA JBL...'
+            : (!st.enabled ? 'PLAY DESLIGADO (SILENCIOSO)' : (st.speaking ? 'TRANSMITINDO ÁUDIO...' : 'PLAY LIGADO — ESCUTANDO'));
         }
 
         document.getElementById('voiceLabel').textContent = 'COOK45: ' + (st.voice || '').replace('pt-BR-', '').replace('en-US-', '').replace('Neural', '');
         document.getElementById('kiloLabel').textContent = 'NIKO: ' + (st.kilo_voice || 'Brian').replace('en-US-', '').replace('pt-BR-', '').replace('MultilingualNeural', '').replace('Neural', '');
 
-        if (st.current_text) {
-          document.getElementById('captionBar').textContent = st.current_text;
+        const capEl = document.getElementById('captionBar');
+        if (st.current_music) {
+          capEl.style.color = 'var(--amber)';
+          capEl.style.borderLeftColor = 'var(--amber)';
+          capEl.textContent = '🎵 TOCANDO AGORA: ' + st.current_music;
+        } else if (st.current_text) {
+          capEl.style.color = '#e2e8f0';
+          capEl.style.borderLeftColor = 'var(--neon)';
+          capEl.textContent = st.current_text;
         }
 
         renderPills();

@@ -43,6 +43,7 @@ DEVICE_STATE = {
     "speaking": False,
     "recording": False,
     "last_transcript": "",
+    "current_music": "",
     "current_text": "",
     "last_audio_url": "",
     "last_step_key": "",
@@ -161,6 +162,7 @@ def stop_audio_playback():
     except Exception:
         pass
     DEVICE_STATE["speaking"] = False
+    DEVICE_STATE["current_music"] = ""
 
 def play_music_winmm(filepath: str, volume: int = 85):
     """Toca qualquer formato de musica direto via PyAV + sounddevice em thread dedicada (zero lag)."""
@@ -172,6 +174,8 @@ def play_music_winmm(filepath: str, volume: int = 85):
     abs_path = os.path.abspath(filepath)
     if not os.path.exists(abs_path):
         return False
+
+    DEVICE_STATE["current_music"] = os.path.basename(abs_path)
 
     def _music_worker():
         global MUSIC_STOP_FLAG
@@ -201,6 +205,9 @@ def play_music_winmm(filepath: str, volume: int = 85):
             container.close()
         except Exception as e:
             print(f"[ERR] Falha ao tocar musica: {e}")
+        finally:
+            if not MUSIC_STOP_FLAG:
+                DEVICE_STATE["current_music"] = ""
 
     MUSIC_THREAD = threading.Thread(target=_music_worker, daemon=True)
     MUSIC_THREAD.start()
