@@ -367,30 +367,46 @@ def speech_worker_loop():
             DEVICE_STATE["speaking"] = False
             DEVICE_STATE["current_text"] = ""
 
-def get_latest_transcript_files():
-    """Localiza os arquivos transcript_full.jsonl ou transcript.jsonl mais recentes do Antigravity."""
+def get_latest_transcript_files(limit: int = 20):
+    """Localiza todos os logs ativos do Antigravity (suporta multiplas janelas abertas ao mesmo tempo)."""
     if not os.path.isdir(BRAIN_DIR):
         return []
     pattern_full = os.path.join(BRAIN_DIR, "*", ".system_generated", "logs", "transcript_full.jsonl")
     pattern_std = os.path.join(BRAIN_DIR, "*", ".system_generated", "logs", "transcript.jsonl")
-    files = glob.glob(pattern_full) + glob.glob(pattern_std)
-    files.sort(key=lambda f: os.path.getmtime(f) if os.path.exists(f) else 0, reverse=True)
-    return files[:4]
+    all_files = glob.glob(pattern_full) + glob.glob(pattern_std)
+    # Deduplica por conversa: prefere transcript_full.jsonl se existir na mesma pasta
+    by_conv = {}
+    for f in all_files:
+        conv_dir = os.path.dirname(f)
+        if conv_dir not in by_conv or os.path.basename(f) == "transcript_full.jsonl":
+            by_conv[conv_dir] = f
+    deduped = list(by_conv.values())
+    deduped.sort(key=lambda f: os.path.getmtime(f) if os.path.exists(f) else 0, reverse=True)
+    return deduped[:limit]
 
 def transcript_watcher_loop():
-    """Monitora em tempo real todas as respostas do cook45 no chat do Antigravity."""
+    """Monitora em tempo real todas as janelas/conversas abertas do Antigravity sem se perder."""
     seen_keys = set()
-    # Na inicialização, marca todos os passos já existentes como vistos para não reler o passado inteiro
-    for tfile in get_latest_transcript_files():
-        conv_id = os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(tfile))))
+    file_offsets = {}
+    conv_labels = {}
+
+    def get_conv_tag(conv_id: str) -> str:
+        if conv_id not in conv_labels:
+            conv_labels[conv_id] = f"Janela {len(conv_labels) + 1}"
+        return conv_labels[conv_id]
+
+    # Na inicialização, indexa TODAS as conversas existentes para nunca reler histórico antigo ao trocar de janela
+    for tfile in get_latest_transcript_files(limit=60):
+        conv_dir = os.path.dirname(tfile)
+        conv_id = os.path.basename(os.path.dirname(os.path.dirname(conv_dir)))
         try:
             with open(tfile, "r", encoding="utf-8", errors="ignore") as f:
                 for line in f:
-                    line = line.strip()
-                    if not line:
+                    s = line.strip()
+                    if not s:
                         continue
                     try:
-                        obj = json.loads(line)
+                        obj = json.loads(s)
                         if obj.get("source") == "MODEL" and obj.get("type") == "PLANNER_RESPONSE":
                             content = (obj.get("content") or "").strip()
                             if content:
@@ -399,28 +415,35 @@ def transcript_watcher_loop():
                                 DEVICE_STATE["last_step_key"] = key
                     except Exception:
                         pass
+                file_offsets[tfile] = f.tell()
         except Exception:
             pass
 
-    print(f"[WATCHER] Monitorando conversas do Antigravity em tempo real ({len(seen_keys)} mensagens anteriores indexadas).")
+    print(f"[WATCHER] Monitorando todas as janelas do Antigravity ({len(file_offsets)} conversas indexadas).")
 
     while True:
         try:
-            for tfile in get_latest_transcript_files():
-                # Prioriza transcript_full.jsonl da mesma conversa se existir
+            for tfile in get_latest_transcript_files(limit=15):
                 conv_dir = os.path.dirname(tfile)
-                full_candidate = os.path.join(conv_dir, "transcript_full.jsonl")
-                if os.path.basename(tfile) == "transcript.jsonl" and os.path.exists(full_candidate):
+                conv_id = os.path.basename(os.path.dirname(os.path.dirname(conv_dir)))
+                fsize = os.path.getsize(tfile) if os.path.exists(tfile) else 0
+                prev_offset = file_offsets.get(tfile, 0)
+
+                # Se o arquivo foi truncado/recriado, reseta offset
+                if fsize < prev_offset:
+                    prev_offset = 0
+
+                if fsize == prev_offset:
                     continue
 
-                conv_id = os.path.basename(os.path.dirname(os.path.dirname(conv_dir)))
                 with open(tfile, "r", encoding="utf-8", errors="ignore") as f:
+                    f.seek(prev_offset)
                     for line in f:
-                        line = line.strip()
-                        if not line:
+                        s = line.strip()
+                        if not s:
                             continue
                         try:
-                            obj = json.loads(line)
+                            obj = json.loads(s)
                             if obj.get("source") == "MODEL" and obj.get("type") == "PLANNER_RESPONSE":
                                 content = (obj.get("content") or "").strip()
                                 step_idx = obj.get("step_index")
@@ -428,15 +451,17 @@ def transcript_watcher_loop():
                                 if content and key not in seen_keys:
                                     seen_keys.add(key)
                                     DEVICE_STATE["last_step_key"] = key
+                                    tag = get_conv_tag(conv_id)
                                     if DEVICE_STATE["enabled"] and DEVICE_STATE["auto_read_chat"] and has_active_player():
-                                        print(f"[WATCHER] Nova mensagem do cook45 detectada ({key})!")
-                                        enqueue_speech(content, source_label="Chat cook45", play_on_host=True)
+                                        print(f"[WATCHER] Nova mensagem do cook45 ({tag} / {key})!")
+                                        enqueue_speech(content, source_label=f"cook45 ({tag})", play_on_host=True)
                         except Exception:
                             pass
+                    file_offsets[tfile] = f.tell()
         except Exception as e:
             print(f"[WARN] Erro no watcher: {e}")
 
-        time.sleep(0.35)
+        time.sleep(0.30)
 
 def get_latest_kilo_parts(limit: int = 12):
     """Lê os últimos blocos de resposta do assistente no banco SQLite do Kilo Code (kilo.db)."""
