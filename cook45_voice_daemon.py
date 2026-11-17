@@ -152,9 +152,24 @@ def stop_audio_playback():
     try:
         mci_send("stop cook45_voice")
         mci_send("close cook45_voice")
+        mci_send("stop cook45_music")
+        mci_send("close cook45_music")
     except Exception:
         pass
     DEVICE_STATE["speaking"] = False
+
+def play_music_winmm(filepath: str, volume: int = 85):
+    """Toca musica direto via winmm.dll (alias separado cook45_music, zero lag e sem depender de app UWP)."""
+    abs_path = os.path.abspath(filepath)
+    mci_send("stop cook45_music")
+    mci_send("close cook45_music")
+    res = winmm.mciSendStringW(f'open "{abs_path}" type mpegvideo alias cook45_music', None, 0, 0)
+    if res != 0:
+        return False
+    mci_vol = max(0, min(1000, int(volume * 10)))
+    mci_send(f"setaudio cook45_music volume to {mci_vol}")
+    mci_send("play cook45_music")
+    return True
 
 def play_mp3_winmm(filepath: str, volume: int = 100):
     """Toca arquivo MP3 ou WAV nativamente usando winmm.dll na thread de áudio."""
@@ -691,6 +706,9 @@ class VoiceDaemonHandler(BaseHTTPRequestHandler):
             }
             allowed_exts = ext_map.get(ftype)
             folders = [
+                r"C:\musica",
+                r"C:\musicas 2",
+                r"C:\img",
                 os.path.expanduser(r"~\Music"),
                 os.path.expanduser(r"~\Pictures"),
                 os.path.expanduser(r"~\Videos"),
@@ -825,6 +843,9 @@ class VoiceDaemonHandler(BaseHTTPRequestHandler):
             if not target:
                 return self._send_json({"ok": False, "error": "Alvo vazio"}, 400)
             try:
+                if target.lower().endswith((".mp3", ".wav", ".wma", ".m4a")):
+                    if play_music_winmm(target, DEVICE_STATE.get("volume", 90)):
+                        return self._send_json({"ok": True, "opened": target, "player": "winmm_direct"})
                 os.startfile(target)
                 return self._send_json({"ok": True, "opened": target})
             except Exception as e:
