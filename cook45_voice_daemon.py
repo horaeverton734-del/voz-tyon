@@ -83,6 +83,11 @@ AVAILABLE_VOICES = [
 SPEECH_QUEUE = []
 QUEUE_LOCK = threading.Lock()
 STOP_REQUESTED = False
+LAST_UI_HEARTBEAT = 0.0
+
+def has_active_player() -> bool:
+    """So permite reproducao automatica se houver um Mini-Player aberto na tela (heartbeat nos ultimos 5s)."""
+    return (time.time() - LAST_UI_HEARTBEAT) <= 5.0
 
 # Win32 MCI API direto no kernel/subsistema multimídia (winmm.dll)
 winmm = ctypes.windll.winmm
@@ -423,7 +428,7 @@ def transcript_watcher_loop():
                                 if content and key not in seen_keys:
                                     seen_keys.add(key)
                                     DEVICE_STATE["last_step_key"] = key
-                                    if DEVICE_STATE["enabled"] and DEVICE_STATE["auto_read_chat"]:
+                                    if DEVICE_STATE["enabled"] and DEVICE_STATE["auto_read_chat"] and has_active_player():
                                         print(f"[WATCHER] Nova mensagem do cook45 detectada ({key})!")
                                         enqueue_speech(content, source_label="Chat cook45", play_on_host=True)
                         except Exception:
@@ -480,7 +485,7 @@ def kilo_watcher_loop():
             for pid, txt in get_latest_kilo_parts(limit=10):
                 if pid not in seen_kilo_ids:
                     seen_kilo_ids.add(pid)
-                    if DEVICE_STATE["enabled"] and DEVICE_STATE.get("auto_read_kilo", True):
+                    if DEVICE_STATE["enabled"] and DEVICE_STATE.get("auto_read_kilo", True) and has_active_player():
                         print(f"[KILO WATCHER] Nova resposta do Niko detectada ({pid})!")
                         enqueue_speech(
                             txt,
@@ -562,12 +567,15 @@ class VoiceDaemonHandler(BaseHTTPRequestHandler):
         self._send_json({"ok": True})
 
     def do_GET(self):
+        global LAST_UI_HEARTBEAT
         parsed = urlparse(self.path)
         if parsed.path == "/api/state":
+            LAST_UI_HEARTBEAT = time.time()
             self._send_json({
                 "state": DEVICE_STATE,
                 "voices": AVAILABLE_VOICES,
-                "queue_size": len(SPEECH_QUEUE)
+                "queue_size": len(SPEECH_QUEUE),
+                "player_connected": True
             })
         elif parsed.path.startswith("/audio/"):
             fname = os.path.basename(parsed.path)
@@ -701,14 +709,6 @@ def main():
 
     t_clip = threading.Thread(target=clipboard_watcher_loop, daemon=True)
     t_clip.start()
-
-    # Mensagem de boot do dispositivo (só toca se o Play estiver ligado)
-    if "--silent-boot" not in sys.argv and DEVICE_STATE["enabled"]:
-        enqueue_speech(
-            "Fala clack! Dispositivo de voz Tyon V45 do cook45 online. Tudo que eu escrever aqui no chat você vai ouvir na hora.",
-            source_label="Sistema Boot",
-            play_on_host=True
-        )
 
     server = HTTPServer(("127.0.0.1", port), VoiceDaemonHandler)
     print(f"============================================================")
