@@ -184,7 +184,7 @@ def play_music_winmm(filepath: str, volume: int = 85):
             audio_stream = container.streams.audio[0]
             rate = audio_stream.rate or 44100
             channels = audio_stream.channels or 2
-            resampler = av.AudioResampler(format="flt", layout="stereo" if channels >= 2 else "mono", rate=rate)
+            resampler = av.AudioResampler(format="fltp", layout="stereo" if channels >= 2 else "mono", rate=rate)
 
             with sd.OutputStream(samplerate=rate, channels=2 if channels >= 2 else 1, dtype="float32") as out_stream:
                 for frame in container.decode(audio=0):
