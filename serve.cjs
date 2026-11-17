@@ -181,6 +181,14 @@ const server = http.createServer((req, res) => {
   });
 });
 
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.log(`[TYON-V45] Porta ${PORT} já está ativa em outra instância. Encerrando duplicata.`);
+    process.exit(0);
+  }
+  throw err;
+});
+
 server.listen(PORT, () => {
   console.log(`[TYON-V45] Painel do Dispositivo de Voz cook45 rodando em http://localhost:${PORT}`);
 });

@@ -3,8 +3,30 @@ import sys
 import time
 import ctypes
 import subprocess
+import urllib.request
 
 user32 = ctypes.windll.user32
+
+def ensure_voice_daemon_running():
+    """Se o motor local (8091) nao estiver rodando, sobe ele solto fora do Antigravity."""
+    try:
+        urllib.request.urlopen("http://127.0.0.1:8091/api/state", timeout=1.0).read()
+        return
+    except Exception:
+        pass
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    serve_js = os.path.join(base_dir, "serve.cjs")
+    if os.path.exists(serve_js):
+        CREATE_NO_WINDOW = 0x08000000
+        DETACHED_PROCESS = 0x00000008
+        subprocess.Popen(
+            ["node", serve_js],
+            cwd=base_dir,
+            creationflags=DETACHED_PROCESS | CREATE_NO_WINDOW,
+            close_fds=True
+        )
+        time.sleep(1.5)
 
 def find_edge_or_chrome():
     # Prioriza Microsoft Edge para rodar em processo 100% separado do Chrome principal do clack
@@ -51,6 +73,7 @@ def lock_mini_player_topmost(pinned: bool = True):
     return len(matched)
 
 def main():
+    ensure_voice_daemon_running()
     exe = find_edge_or_chrome()
     # Usa /index.html?popup=1 para bater direto no arquivo na nuvem sem cair em 404 de barra
     url = "https://voz-tyon.onrender.com/index.html?popup=1"

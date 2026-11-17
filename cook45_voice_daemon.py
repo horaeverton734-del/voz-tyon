@@ -156,12 +156,13 @@ def play_mp3_winmm(filepath: str, volume: int = 100):
         mci_send(f"setaudio cook45_voice volume to {mci_vol}")
         mci_send("play cook45_voice")
         
-        # Aguarda término ou interrupção
-        while not STOP_REQUESTED:
+        # Aguarda término ou interrupção imediata se o usuário desligar o Play
+        while not STOP_REQUESTED and DEVICE_STATE["enabled"]:
             status = mci_send("status cook45_voice mode")
             if status not in ("playing", "seeking"):
                 break
-            time.sleep(0.08)
+            time.sleep(0.06)
+        mci_send("stop cook45_voice")
         mci_send("close cook45_voice")
         return True
     except Exception as e:
@@ -400,33 +401,33 @@ def transcript_watcher_loop():
 
     while True:
         try:
-            if DEVICE_STATE["enabled"] and DEVICE_STATE["auto_read_chat"]:
-                for tfile in get_latest_transcript_files():
-                    # Prioriza transcript_full.jsonl da mesma conversa se existir
-                    conv_dir = os.path.dirname(tfile)
-                    full_candidate = os.path.join(conv_dir, "transcript_full.jsonl")
-                    if os.path.basename(tfile) == "transcript.jsonl" and os.path.exists(full_candidate):
-                        continue
+            for tfile in get_latest_transcript_files():
+                # Prioriza transcript_full.jsonl da mesma conversa se existir
+                conv_dir = os.path.dirname(tfile)
+                full_candidate = os.path.join(conv_dir, "transcript_full.jsonl")
+                if os.path.basename(tfile) == "transcript.jsonl" and os.path.exists(full_candidate):
+                    continue
 
-                    conv_id = os.path.basename(os.path.dirname(os.path.dirname(conv_dir)))
-                    with open(tfile, "r", encoding="utf-8", errors="ignore") as f:
-                        for line in f:
-                            line = line.strip()
-                            if not line:
-                                continue
-                            try:
-                                obj = json.loads(line)
-                                if obj.get("source") == "MODEL" and obj.get("type") == "PLANNER_RESPONSE":
-                                    content = (obj.get("content") or "").strip()
-                                    step_idx = obj.get("step_index")
-                                    key = f"{conv_id}:{step_idx}"
-                                    if content and key not in seen_keys:
-                                        seen_keys.add(key)
-                                        DEVICE_STATE["last_step_key"] = key
+                conv_id = os.path.basename(os.path.dirname(os.path.dirname(conv_dir)))
+                with open(tfile, "r", encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            obj = json.loads(line)
+                            if obj.get("source") == "MODEL" and obj.get("type") == "PLANNER_RESPONSE":
+                                content = (obj.get("content") or "").strip()
+                                step_idx = obj.get("step_index")
+                                key = f"{conv_id}:{step_idx}"
+                                if content and key not in seen_keys:
+                                    seen_keys.add(key)
+                                    DEVICE_STATE["last_step_key"] = key
+                                    if DEVICE_STATE["enabled"] and DEVICE_STATE["auto_read_chat"]:
                                         print(f"[WATCHER] Nova mensagem do cook45 detectada ({key})!")
                                         enqueue_speech(content, source_label="Chat cook45", play_on_host=True)
-                            except Exception:
-                                pass
+                        except Exception:
+                            pass
         except Exception as e:
             print(f"[WARN] Erro no watcher: {e}")
 
@@ -476,18 +477,18 @@ def kilo_watcher_loop():
 
     while True:
         try:
-            if DEVICE_STATE["enabled"] and DEVICE_STATE.get("auto_read_kilo", True):
-                for pid, txt in get_latest_kilo_parts(limit=10):
-                    if pid not in seen_kilo_ids:
-                        seen_kilo_ids.add(pid)
+            for pid, txt in get_latest_kilo_parts(limit=10):
+                if pid not in seen_kilo_ids:
+                    seen_kilo_ids.add(pid)
+                    if DEVICE_STATE["enabled"] and DEVICE_STATE.get("auto_read_kilo", True):
                         print(f"[KILO WATCHER] Nova resposta do Niko detectada ({pid})!")
                         enqueue_speech(
                             txt,
                             source_label="Chat Niko (Kilo)",
                             play_on_host=True,
                             voice_override=DEVICE_STATE.get("kilo_voice", "en-US-BrianMultilingualNeural"),
-                            rate_override=DEVICE_STATE.get("kilo_rate", "+12%"),
-                            pitch_override=DEVICE_STATE.get("kilo_pitch", "-2Hz")
+                            rate_override=DEVICE_STATE.get("kilo_rate", "+4%"),
+                            pitch_override=DEVICE_STATE.get("kilo_pitch", "+0Hz")
                         )
         except Exception as e:
             print(f"[WARN] Erro no kilo_watcher: {e}")
@@ -616,6 +617,10 @@ class VoiceDaemonHandler(BaseHTTPRequestHandler):
             ):
                 if k in payload:
                     DEVICE_STATE[k] = payload[k]
+            if not DEVICE_STATE["enabled"]:
+                with QUEUE_LOCK:
+                    SPEECH_QUEUE.clear()
+                stop_audio_playback()
             save_persisted_state()
             return self._send_json({"ok": True, "state": DEVICE_STATE})
 
@@ -670,7 +675,20 @@ class VoiceDaemonHandler(BaseHTTPRequestHandler):
 
         self._send_json({"error": "Rota inválida"}, 404)
 
+def acquire_single_instance_mutex():
+    """Garante instancia unica do motor de voz para evitar atrito de dois audios tocando juntos."""
+    kernel32 = ctypes.windll.kernel32
+    mutex = kernel32.CreateMutexW(None, False, "Local\\TYON_V45_COOK45_VOICE_MUTEX")
+    if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        return None
+    return mutex
+
 def main():
+    _mutex = acquire_single_instance_mutex()
+    if _mutex is None:
+        print("[TYON-V45] Outro motor de voz já está ativo. Encerrando duplicata para evitar atrito de áudio.")
+        sys.exit(0)
+
     port = int(os.environ.get("VOICE_DAEMON_PORT", "8091"))
     t_worker = threading.Thread(target=speech_worker_loop, daemon=True)
     t_worker.start()
@@ -684,8 +702,8 @@ def main():
     t_clip = threading.Thread(target=clipboard_watcher_loop, daemon=True)
     t_clip.start()
 
-    # Mensagem de boot do dispositivo
-    if "--silent-boot" not in sys.argv:
+    # Mensagem de boot do dispositivo (só toca se o Play estiver ligado)
+    if "--silent-boot" not in sys.argv and DEVICE_STATE["enabled"]:
         enqueue_speech(
             "Fala clack! Dispositivo de voz Tyon V45 do cook45 online. Tudo que eu escrever aqui no chat você vai ouvir na hora.",
             source_label="Sistema Boot",
