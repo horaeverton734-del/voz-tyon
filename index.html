@@ -535,30 +535,31 @@
           <div class="ctrl-row">
             <label><span style="color:var(--neon); font-weight:bold;">VOZ DO COOK45 (DIREITA):</span></label>
             <select id="selVoice" onchange="onPresetChange()">
-              <option value="pt-BR-AntonioNeural" data-pitch="-8" data-rate="10">Cook45 Veterano (Antonio PT-BR - Grave -8Hz)</option>
-              <option value="pt-BR-AntonioNeural" data-pitch="-12" data-rate="8">Cook45 Subgrave Pesado (Antonio -12Hz)</option>
-              <option value="en-US-AndrewMultilingualNeural" data-pitch="-6" data-rate="10">Cook45 Andrew (Masculino Encorpado -6Hz)</option>
+              <option value="pt-BR-AntonioNeural" data-pitch="-1" data-rate="3">Cook45 Humanizado (Antonio PT-BR Natural -1Hz)</option>
+              <option value="pt-BR-AntonioNeural" data-pitch="0" data-rate="0">Cook45 Puro (Antonio PT-BR 100% Limpo 0Hz)</option>
+              <option value="pt-BR-AntonioNeural" data-pitch="-6" data-rate="8">Cook45 Grave (Antonio -6Hz)</option>
+              <option value="en-US-AndrewMultilingualNeural" data-pitch="-1" data-rate="3">Cook45 Andrew (Masculino Natural -1Hz)</option>
             </select>
           </div>
 
           <div class="ctrl-row">
             <label><span style="color:var(--cyan); font-weight:bold;">VOZ DO NIKO / KILO CODE (ESQUERDA):</span></label>
             <select id="selKiloVoice" onchange="onKiloPresetChange()">
-              <option value="en-US-BrianMultilingualNeural" data-pitch="-2Hz" data-rate="+12%">Niko Masculino 1 (Brian Neural - Outro Homem)</option>
-              <option value="en-US-AndrewMultilingualNeural" data-pitch="-3Hz" data-rate="+12%">Niko Masculino 2 (Andrew Neural - Firme)</option>
-              <option value="pt-BR-AntonioNeural" data-pitch="+6Hz" data-rate="+16%">Niko Masculino 3 (Antonio Jovem Rápido +6Hz)</option>
-              <option value="fr-FR-RemyMultilingualNeural" data-pitch="-3Hz" data-rate="+12%">Niko Masculino 4 (Remy Neural)</option>
-              <option value="pt-PT-DuarteNeural" data-pitch="-3Hz" data-rate="+12%">Niko Masculino 5 (Duarte Neural)</option>
+              <option value="en-US-BrianMultilingualNeural" data-pitch="+0Hz" data-rate="+4%">Niko Masculino 1 (Brian Neural Natural)</option>
+              <option value="en-US-AndrewMultilingualNeural" data-pitch="+0Hz" data-rate="+3%">Niko Masculino 2 (Andrew Neural Natural)</option>
+              <option value="pt-BR-AntonioNeural" data-pitch="+4Hz" data-rate="+8%">Niko Masculino 3 (Antonio Jovem +4Hz)</option>
+              <option value="fr-FR-RemyMultilingualNeural" data-pitch="+0Hz" data-rate="+4%">Niko Masculino 4 (Remy Neural)</option>
+              <option value="pt-PT-DuarteNeural" data-pitch="+0Hz" data-rate="+3%">Niko Masculino 5 (Duarte Neural)</option>
             </select>
           </div>
 
           <div class="ctrl-row">
-            <label><span>VELOCIDADE (RATE)</span><strong id="lblRate">+10%</strong></label>
-            <input type="range" id="rngRate" min="-25" max="45" value="10" oninput="syncLabels()" onchange="pushConfig()" />
+            <label><span>VELOCIDADE (RATE)</span><strong id="lblRate">+3%</strong></label>
+            <input type="range" id="rngRate" min="-25" max="45" value="3" oninput="syncLabels()" onchange="pushConfig()" />
           </div>
           <div class="ctrl-row">
-            <label><span>GRAVE / PITCH</span><strong id="lblPitch">-8Hz</strong></label>
-            <input type="range" id="rngPitch" min="-20" max="15" value="-8" oninput="syncLabels()" onchange="pushConfig()" />
+            <label><span>GRAVE / PITCH</span><strong id="lblPitch">-1Hz</strong></label>
+            <input type="range" id="rngPitch" min="-20" max="15" value="-1" oninput="syncLabels()" onchange="pushConfig()" />
           </div>
           <div class="ctrl-row">
             <label><span>VOLUME</span><strong id="lblVol">100%</strong></label>

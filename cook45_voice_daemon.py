@@ -28,18 +28,18 @@ DEVICE_STATE = {
     "auto_read_kilo": True,
     "clipboard_watch": False,
     "voice": "pt-BR-AntonioNeural",
-    "rate": "+10%",
-    "pitch": "-8Hz",
+    "rate": "+3%",
+    "pitch": "-1Hz",
     "kilo_voice": "en-US-BrianMultilingualNeural",
-    "kilo_rate": "+12%",
-    "kilo_pitch": "-2Hz",
+    "kilo_rate": "+4%",
+    "kilo_pitch": "+0Hz",
     "volume": 100,
     "speaking": False,
     "current_text": "",
     "last_audio_url": "",
     "last_step_key": "",
     "history": [],
-    "engine": "edge-tts (Neural Dual-Male)"
+    "engine": "edge-tts (Neural Humanizado)"
 }
 
 def load_persisted_state():
@@ -206,13 +206,16 @@ def clean_text_for_speech(raw_text: str) -> str:
     text = re.sub(r"-{2,}", " ", text)
     text = re.sub(r"━+", " ", text)
 
+    # Remove emojis e símbolos decorativos que causam engasgos ou leitura robótica
+    text = re.sub(r"[\U00010000-\U0010ffff\u2600-\u27bf\ufe0f]", " ", text)
+
     # Ajustes de pronúncia técnica PT-BR
     replacements = {
-        r"\bcook45\b": "cuk quarenta e cinco",
-        r"\bCook45\b": "Cuk quarenta e cinco",
-        r"\bCOOK45\b": "Cuk quarenta e cinco",
-        r"\bclack\b": "clék",
-        r"\bClack\b": "Clék",
+        r"\bcook45\b": "cúk quarenta e cinco",
+        r"\bCook45\b": "Cúk quarenta e cinco",
+        r"\bCOOK45\b": "Cúk quarenta e cinco",
+        r"\bclack\b": "cléck",
+        r"\bClack\b": "Cléck",
         r"\bTTS\b": "Tê Tê Ésse",
         r"\bGPU\b": "Gê Pê U",
         r"\bCPU\b": "Cê Pê U",
@@ -226,7 +229,17 @@ def clean_text_for_speech(raw_text: str) -> str:
     for pattern, repl in replacements.items():
         text = re.sub(pattern, repl, text)
 
-    # Normaliza espaços e quebras de linha
+    # Preserva pausas naturais de respiração nas quebras de linha e listas
+    lines = []
+    for raw_line in text.splitlines():
+        ln = re.sub(r"[ \t]+", " ", raw_line).strip()
+        if not ln:
+            continue
+        if ln[-1] not in ".!?:,;":
+            ln += "."
+        lines.append(ln)
+
+    text = " ".join(lines)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
