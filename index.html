@@ -244,6 +244,44 @@
       border-radius: 0 4px 4px 0;
     }
 
+    /* Botão Mestre PLAY LIGADO / DESLIGADO (impossível confundir) */
+    .master-play-btn {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.78rem;
+      font-weight: bold;
+      letter-spacing: 0.6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+    }
+    .master-play-btn.on {
+      background: linear-gradient(90deg, rgba(0, 255, 157, 0.22) 0%, rgba(0, 210, 255, 0.14) 100%);
+      border: 2px solid var(--neon);
+      color: var(--neon);
+      box-shadow: 0 0 18px rgba(0, 255, 157, 0.28);
+    }
+    .master-play-btn.off {
+      background: rgba(255, 59, 92, 0.14);
+      border: 2px solid var(--danger);
+      color: #ff7088;
+      box-shadow: 0 0 12px rgba(255, 59, 92, 0.15);
+    }
+
+    .player-shell.is-off {
+      border-color: rgba(255, 59, 92, 0.45);
+    }
+    .player-shell.is-off .quick-toggles,
+    .player-shell.is-off .transport-bar {
+      opacity: 0.42;
+    }
+
     /* Botões Principais de Media Player */
     .transport-bar {
       display: grid;
@@ -490,6 +528,11 @@
         </div>
       </div>
 
+      <!-- Botão Mestre PLAY LIGADO / DESLIGADO -->
+      <button id="masterPlayBtn" class="master-play-btn on" onclick="toggleFlag('enabled')">
+        ▶ PLAY LIGADO — ÁUDIO ATIVO
+      </button>
+
       <!-- Botões Principais estilo Media Player -->
       <div class="transport-bar">
         <button class="t-btn play" onclick="readLast()">
@@ -507,10 +550,7 @@
       </div>
 
       <!-- Chaves Rápidas -->
-      <div class="quick-toggles">
-        <div id="pillPower" class="q-pill on" onclick="toggleFlag('enabled')">
-          🔊 SOM: ON
-        </div>
+      <div class="quick-toggles" style="grid-template-columns: repeat(3, 1fr);">
         <div id="pillChat" class="q-pill on" onclick="toggleFlag('auto_read_chat')">
           💬 COOK: ON
         </div>
@@ -783,11 +823,17 @@
     }
 
     function renderPills() {
-      const pPower = document.getElementById('pillPower');
-      pPower.className = 'q-pill' + (stateCache.enabled ? ' on' : '');
-      pPower.style.borderColor = stateCache.enabled ? 'var(--neon)' : 'var(--danger)';
-      pPower.style.color = stateCache.enabled ? 'var(--neon)' : 'var(--danger)';
-      pPower.textContent = stateCache.enabled ? '▶ PLAY: LIGADO' : '⏸ DESLIGADO';
+      const mBtn = document.getElementById('masterPlayBtn');
+      const shell = document.getElementById('playerShell');
+      if (stateCache.enabled) {
+        mBtn.className = 'master-play-btn on';
+        mBtn.textContent = '▶ PLAY LIGADO — ÁUDIO ATIVO';
+        shell.classList.remove('is-off');
+      } else {
+        mBtn.className = 'master-play-btn off';
+        mBtn.textContent = '⏸ PLAY DESLIGADO — MUDO (CLIQUE P/ LIGAR)';
+        shell.classList.add('is-off');
+      }
 
       const pChat = document.getElementById('pillChat');
       pChat.className = 'q-pill' + (stateCache.auto_read_chat ? ' on' : '');
