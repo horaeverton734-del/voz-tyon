@@ -15,31 +15,38 @@ from urllib.parse import urlparse, parse_qs
 # Diretórios base
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 AUDIO_DIR = os.path.join(BASE_DIR, "audio_cache")
+OFFLINE_MODELS_DIR = os.path.join(BASE_DIR, "offline_models")
 BRAIN_DIR = os.path.expanduser(r"~\.gemini\antigravity\brain")
 KILO_DB_PATH = os.path.expanduser(r"~\.local\share\kilo\kilo.db")
 STATE_FILE = os.path.join(BASE_DIR, "device_state.json")
 
 os.makedirs(AUDIO_DIR, exist_ok=True)
+os.makedirs(OFFLINE_MODELS_DIR, exist_ok=True)
 
 # Estado global do Dispositivo de Voz cook45 + Niko (Kilo Code)
 DEVICE_STATE = {
     "enabled": True,
+    "offline_mode": False,
     "auto_read_chat": True,
     "auto_read_kilo": True,
     "clipboard_watch": False,
     "voice": "pt-BR-AntonioNeural",
+    "offline_voice": "pt_BR-faber-medium.onnx",
     "rate": "+3%",
     "pitch": "-1Hz",
     "kilo_voice": "en-US-BrianMultilingualNeural",
+    "offline_kilo_voice": "pt_BR-cadu-medium.onnx",
     "kilo_rate": "+4%",
     "kilo_pitch": "+0Hz",
     "volume": 100,
     "speaking": False,
+    "recording": False,
+    "last_transcript": "",
     "current_text": "",
     "last_audio_url": "",
     "last_step_key": "",
     "history": [],
-    "engine": "edge-tts (Neural Humanizado)"
+    "engine": "Piper ONNX + Edge-TTS (Híbrido)"
 }
 
 def load_persisted_state():
@@ -48,8 +55,9 @@ def load_persisted_state():
             with open(STATE_FILE, "r", encoding="utf-8") as f:
                 saved = json.load(f)
             for k in (
-                "enabled", "auto_read_chat", "auto_read_kilo", "clipboard_watch",
-                "voice", "rate", "pitch", "kilo_voice", "kilo_rate", "kilo_pitch", "volume"
+                "enabled", "offline_mode", "auto_read_chat", "auto_read_kilo", "clipboard_watch",
+                "voice", "offline_voice", "rate", "pitch",
+                "kilo_voice", "offline_kilo_voice", "kilo_rate", "kilo_pitch", "volume"
             ):
                 if k in saved:
                     DEVICE_STATE[k] = saved[k]
@@ -60,8 +68,9 @@ def save_persisted_state():
     try:
         data = {
             k: DEVICE_STATE[k] for k in (
-                "enabled", "auto_read_chat", "auto_read_kilo", "clipboard_watch",
-                "voice", "rate", "pitch", "kilo_voice", "kilo_rate", "kilo_pitch", "volume"
+                "enabled", "offline_mode", "auto_read_chat", "auto_read_kilo", "clipboard_watch",
+                "voice", "offline_voice", "rate", "pitch",
+                "kilo_voice", "offline_kilo_voice", "kilo_rate", "kilo_pitch", "volume"
             )
         }
         with open(STATE_FILE, "w", encoding="utf-8") as f:
@@ -147,16 +156,19 @@ def stop_audio_playback():
     DEVICE_STATE["speaking"] = False
 
 def play_mp3_winmm(filepath: str, volume: int = 100):
-    """Toca arquivo MP3/WAV nativamente usando winmm.dll na thread de áudio."""
+    """Toca arquivo MP3 ou WAV nativamente usando winmm.dll na thread de áudio."""
     global STOP_REQUESTED
     STOP_REQUESTED = False
     try:
         mci_send("close cook45_voice")
         abs_path = os.path.abspath(filepath)
-        res = winmm.mciSendStringW(f'open "{abs_path}" type mpegvideo alias cook45_voice', None, 0, 0)
+        media_type = "waveaudio" if abs_path.lower().endswith(".wav") else "mpegvideo"
+        res = winmm.mciSendStringW(f'open "{abs_path}" type {media_type} alias cook45_voice', None, 0, 0)
+        if res != 0 and media_type == "waveaudio":
+            res = winmm.mciSendStringW(f'open "{abs_path}" type mpegvideo alias cook45_voice', None, 0, 0)
         if res != 0:
             return False
-        # Volume no MCI vai de 0 a 1000
+        # Volume no MCI vai de 0 a 1000 (waveaudio usa setaudio quando suportado)
         mci_vol = max(0, min(1000, int(volume * 10)))
         mci_send(f"setaudio cook45_voice volume to {mci_vol}")
         mci_send("play cook45_voice")
@@ -249,13 +261,57 @@ def clean_text_for_speech(raw_text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
+PIPER_CACHE = {}
+WHISPER_MODEL = None
+REC_STATE = {"stream": None, "frames": [], "samplerate": 16000}
+
+def get_piper_voice(model_filename: str):
+    if model_filename in PIPER_CACHE:
+        return PIPER_CACHE[model_filename]
+    from piper import PiperVoice
+    model_path = os.path.join(OFFLINE_MODELS_DIR, model_filename)
+    if not os.path.exists(model_path):
+        # Fallback para qualquer .onnx disponível na pasta offline_models
+        candidates = glob.glob(os.path.join(OFFLINE_MODELS_DIR, "*.onnx"))
+        if not candidates:
+            raise FileNotFoundError("Nenhum modelo .onnx encontrado em offline_models")
+        model_path = candidates[0]
+    voice = PiperVoice.load(model_path)
+    PIPER_CACHE[model_filename] = voice
+    return voice
+
+def synthesize_piper_offline(text: str, model_filename: str, rate_str: str, out_wav_path: str):
+    import wave
+    voice = get_piper_voice(model_filename)
+    # Converte rate "+10%" / "-10%" em length_scale (menor = mais rápido)
+    try:
+        pct = int(re.sub(r"[^\d-]", "", rate_str or "0") or "0")
+    except Exception:
+        pct = 0
+    length_scale = max(0.65, min(1.5, 1.0 - (pct / 100.0)))
+    try:
+        from piper.config import SynthesisConfig
+        syn_cfg = SynthesisConfig(length_scale=length_scale)
+        with wave.open(out_wav_path, "wb") as wf:
+            voice.synthesize_wav(text, wf, syn_config=syn_cfg)
+    except Exception:
+        with wave.open(out_wav_path, "wb") as wf:
+            voice.synthesize_wav(text, wf)
+
+def transcribe_wav_offline(wav_path: str) -> str:
+    global WHISPER_MODEL
+    from faster_whisper import WhisperModel
+    if WHISPER_MODEL is None:
+        WHISPER_MODEL = WhisperModel("tiny", device="cpu", compute_type="int8")
+    segments, _ = WHISPER_MODEL.transcribe(wav_path, language="pt", beam_size=3)
+    return " ".join(seg.text.strip() for seg in segments).strip()
+
 async def synthesize_edge_tts(text: str, voice: str, rate: str, pitch: str, out_path: str):
     import edge_tts
     try:
         communicate = edge_tts.Communicate(text=text, voice=voice, rate=rate, pitch=pitch)
         await communicate.save(out_path)
     except Exception:
-        # Se alguma voz falhar, garante fallback 100% masculino (AntonioNeural) sem cair na voz feminina do Windows
         communicate = edge_tts.Communicate(text=text, voice="pt-BR-AntonioNeural", rate=rate, pitch=pitch)
         await communicate.save(out_path)
 
@@ -325,24 +381,43 @@ def speech_worker_loop():
             DEVICE_STATE["current_text"] = entry["clean_text"]
             print(f"\n[VOZ COOK45] ({entry['source']}) Sintetizando: {entry['clean_text'][:90]}...")
 
-            try:
-                loop.run_until_complete(
-                    synthesize_edge_tts(
-                        entry["clean_text"],
-                        entry["voice"],
-                        entry["rate"],
-                        entry["pitch"],
-                        entry["audio_file"]
+            use_offline = bool(DEVICE_STATE.get("offline_mode", False))
+            is_niko = "Niko" in entry.get("source", "")
+            offline_model = DEVICE_STATE.get("offline_kilo_voice", "pt_BR-cadu-medium.onnx") if is_niko else DEVICE_STATE.get("offline_voice", "pt_BR-faber-medium.onnx")
+
+            if not use_offline:
+                try:
+                    loop.run_until_complete(
+                        synthesize_edge_tts(
+                            entry["clean_text"],
+                            entry["voice"],
+                            entry["rate"],
+                            entry["pitch"],
+                            entry["audio_file"]
+                        )
                     )
-                )
-                entry["ready"] = True
-                DEVICE_STATE["engine"] = "edge-tts (Neural)"
-                DEVICE_STATE["last_audio_url"] = entry["audio_url"]
-            except Exception as e:
-                print(f"[WARN] Falha no edge-tts ({e}), acionando SAPI5 local...")
-                DEVICE_STATE["engine"] = "Windows SAPI5 (Offline)"
-                if entry.get("play_on_host", True) and DEVICE_STATE["enabled"]:
-                    fallback_sapi_speak(entry["clean_text"])
+                    entry["ready"] = True
+                    DEVICE_STATE["engine"] = "edge-tts (Neural Online)"
+                    DEVICE_STATE["last_audio_url"] = entry["audio_url"]
+                except Exception as e:
+                    print(f"[WARN] Sem internet ou falha no edge-tts ({e}), chaveando para Piper ONNX 100% Offline...")
+                    use_offline = True
+
+            if use_offline:
+                try:
+                    wav_path = entry["audio_file"].rsplit(".", 1)[0] + ".wav"
+                    wav_url = entry["audio_url"].rsplit(".", 1)[0] + ".wav"
+                    synthesize_piper_offline(entry["clean_text"], offline_model, entry["rate"], wav_path)
+                    entry["audio_file"] = wav_path
+                    entry["audio_url"] = wav_url
+                    entry["ready"] = True
+                    DEVICE_STATE["engine"] = f"Piper ONNX Offline ({offline_model.replace('.onnx', '')})"
+                    DEVICE_STATE["last_audio_url"] = wav_url
+                except Exception as e2:
+                    print(f"[WARN] Falha no Piper ({e2}), acionando SAPI5 local...")
+                    DEVICE_STATE["engine"] = "Windows SAPI5 (Offline)"
+                    if entry.get("play_on_host", True) and DEVICE_STATE["enabled"]:
+                        fallback_sapi_speak(entry["clean_text"])
 
             # Adiciona ao histórico
             hist_item = {
@@ -609,7 +684,8 @@ class VoiceDaemonHandler(BaseHTTPRequestHandler):
                 with open(fpath, "rb") as f:
                     data = f.read()
                 self.send_response(200)
-                self.send_header("Content-Type", "audio/mpeg")
+                ctype = "audio/wav" if fname.lower().endswith(".wav") else "audio/mpeg"
+                self.send_header("Content-Type", ctype)
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
@@ -645,8 +721,9 @@ class VoiceDaemonHandler(BaseHTTPRequestHandler):
 
         elif parsed.path == "/api/config":
             for k in (
-                "enabled", "auto_read_chat", "auto_read_kilo", "clipboard_watch",
-                "voice", "rate", "pitch", "kilo_voice", "kilo_rate", "kilo_pitch", "volume"
+                "enabled", "offline_mode", "auto_read_chat", "auto_read_kilo", "clipboard_watch",
+                "voice", "offline_voice", "rate", "pitch",
+                "kilo_voice", "offline_kilo_voice", "kilo_rate", "kilo_pitch", "volume"
             ):
                 if k in payload:
                     DEVICE_STATE[k] = payload[k]
@@ -656,6 +733,64 @@ class VoiceDaemonHandler(BaseHTTPRequestHandler):
                 stop_audio_playback()
             save_persisted_state()
             return self._send_json({"ok": True, "state": DEVICE_STATE})
+
+        elif parsed.path == "/api/record_start":
+            try:
+                import sounddevice as sd
+                if REC_STATE["stream"] is not None:
+                    try:
+                        REC_STATE["stream"].stop()
+                        REC_STATE["stream"].close()
+                    except Exception:
+                        pass
+                REC_STATE["frames"] = []
+                def _cb(indata, frames, time_info, status):
+                    REC_STATE["frames"].append(indata.copy())
+                stream = sd.InputStream(samplerate=16000, channels=1, dtype="int16", callback=_cb)
+                stream.start()
+                REC_STATE["stream"] = stream
+                DEVICE_STATE["recording"] = True
+                return self._send_json({"ok": True, "recording": True})
+            except Exception as e:
+                DEVICE_STATE["recording"] = False
+                return self._send_json({"ok": False, "error": f"Microfone não detectado ({e})"}, 400)
+
+        elif parsed.path == "/api/record_stop":
+            try:
+                import wave
+                import numpy as np
+                if REC_STATE["stream"] is not None:
+                    REC_STATE["stream"].stop()
+                    REC_STATE["stream"].close()
+                    REC_STATE["stream"] = None
+                DEVICE_STATE["recording"] = False
+                if not REC_STATE["frames"]:
+                    return self._send_json({"ok": False, "error": "Nenhum áudio gravado"}, 400)
+                audio_np = np.concatenate(REC_STATE["frames"], axis=0)
+                rec_path = os.path.join(AUDIO_DIR, "dictation_last.wav")
+                with wave.open(rec_path, "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(16000)
+                    wf.writeframes(audio_np.tobytes())
+                transcript = transcribe_wav_offline(rec_path)
+                DEVICE_STATE["last_transcript"] = transcript
+                return self._send_json({"ok": True, "text": transcript})
+            except Exception as e:
+                DEVICE_STATE["recording"] = False
+                return self._send_json({"ok": False, "error": str(e)}, 500)
+
+        elif parsed.path == "/api/narrate_batch":
+            text = (payload.get("text") or "").strip()
+            if not text:
+                return self._send_json({"error": "Texto vazio"}, 400)
+            chunks = [c.strip() for c in re.split(r"(?<=[.!?])\s+|\n+", text) if c.strip()]
+            entries = []
+            for idx, chunk in enumerate(chunks[:30]):
+                e = enqueue_speech(chunk, source_label=f"Narrador Lote {idx+1}/{len(chunks)}", play_on_host=True)
+                if e:
+                    entries.append(e["id"])
+            return self._send_json({"ok": True, "queued": len(entries)})
 
         elif parsed.path == "/api/pin":
             pinned = bool(payload.get("pinned", True))

@@ -1,5 +1,6 @@
 node_modules/
 audio_cache/
+offline_models/
 mini_profile/
 mini_profile_cloud/
 __pycache__/

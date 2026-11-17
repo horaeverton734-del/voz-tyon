@@ -550,12 +550,15 @@
       </div>
 
       <!-- Chaves Rápidas -->
-      <div class="quick-toggles" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="quick-toggles">
         <div id="pillChat" class="q-pill on" onclick="toggleFlag('auto_read_chat')">
           💬 COOK: ON
         </div>
         <div id="pillKilo" class="q-pill on-niko" onclick="toggleFlag('auto_read_kilo')">
           🤖 NIKO: ON
+        </div>
+        <div id="pillOffline" class="q-pill" onclick="toggleFlag('offline_mode')">
+          📡 OFFLINE: OFF
         </div>
         <div id="pillClip" class="q-pill" onclick="toggleFlag('clipboard_watch')">
           📋 CTRL+C
@@ -564,10 +567,11 @@
 
       <!-- Corpo Expansível -->
       <div id="expandableBody">
-        <div class="tabs-bar">
-          <button class="tab-btn active" id="tabBtn-voice" onclick="openTab('voice')">🎛️ VOZ/TOM</button>
-          <button class="tab-btn" id="tabBtn-speak" onclick="openTab('speak')">🎙️ DIGITAR</button>
-          <button class="tab-btn" id="tabBtn-hist" onclick="openTab('hist')">📜 HISTÓRICO</button>
+        <div class="tabs-bar" style="grid-template-columns: repeat(4, 1fr);">
+          <button class="tab-btn active" id="tabBtn-voice" onclick="openTab('voice')">🎛️ STUDIO</button>
+          <button class="tab-btn" id="tabBtn-speak" onclick="openTab('speak')">🎙️ DITADO</button>
+          <button class="tab-btn" id="tabBtn-batch" onclick="openTab('batch')">📖 NARRADOR</button>
+          <button class="tab-btn" id="tabBtn-hist" onclick="openTab('hist')">📜 HIST.</button>
         </div>
 
         <!-- Gaveta 1: Voz do Cook45 + Voz do Niko + Sliders -->
@@ -607,13 +611,24 @@
           </div>
         </div>
 
-        <!-- Gaveta 2: Transmissor de Texto Manual -->
+        <!-- Gaveta 2: Ditado Offline (Faster-Whisper) + Transmissor Manual -->
         <div class="drawer" id="drawer-speak">
-          <textarea id="miniText" placeholder="Cole ou digite qualquer texto aqui para ouvir..."></textarea>
+          <button id="btnRecordMic" class="t-btn niko" style="width:100%; margin-bottom:6px; padding:7px;" onclick="toggleMicRecord()">
+            🎙️ GRAVAR MICROFONE (TRANSCRIÇÃO OFFLINE)
+          </button>
+          <textarea id="miniText" placeholder="Fale no microfone acima ou digite/cole qualquer texto aqui..."></textarea>
           <div style="display:flex; gap:6px;">
-            <button class="t-btn play" style="flex:1;" onclick="speakCustom()">🎙️ FALAR AGORA</button>
+            <button class="t-btn play" style="flex:1;" onclick="speakCustom()">🔊 FALAR AGORA</button>
             <button class="t-btn" onclick="document.getElementById('miniText').value=''">LIMPAR</button>
           </div>
+        </div>
+
+        <!-- Gaveta 3: Narrador em Lote / Audiobook -->
+        <div class="drawer" id="drawer-batch">
+          <textarea id="batchText" style="height:74px; resize:none; margin-bottom:6px;" placeholder="Cole um texto longo, roteiro ou capítulo inteiro para narrar frase por frase (online ou offline)..."></textarea>
+          <button class="t-btn play" style="width:100%;" onclick="narrateBatch()">
+            📖 NARRAR TEXTO LONGO EM LOTE
+          </button>
         </div>
 
         <!-- Gaveta 3: Histórico de Áudios com Replay -->
@@ -765,9 +780,10 @@
     drawScope();
 
     function openTab(name) {
-      ['voice', 'speak', 'hist'].forEach(t => {
+      ['voice', 'speak', 'batch', 'hist'].forEach(t => {
         const d = document.getElementById('drawer-' + t);
         const b = document.getElementById('tabBtn-' + t);
+        if (!d || !b) return;
         if (t === name) {
           const isAlreadyOpen = d.classList.contains('open');
           d.classList.toggle('open', !isAlreadyOpen);
@@ -776,6 +792,58 @@
           d.classList.remove('open');
           b.classList.remove('active');
         }
+      });
+    }
+
+    let isRecordingMic = false;
+    async function toggleMicRecord() {
+      const btn = document.getElementById('btnRecordMic');
+      if (!isRecordingMic) {
+        isRecordingMic = true;
+        btn.style.borderColor = 'var(--danger)';
+        btn.style.color = 'var(--danger)';
+        btn.textContent = '⏹ PARAR E TRANSCREVER (WHISPER OFFLINE)';
+        try {
+          const r = await apiFetch('/api/record_start', { method: 'POST' });
+          const d = await r.json();
+          if (!d.ok) {
+            isRecordingMic = false;
+            btn.style.borderColor = 'var(--cyan)';
+            btn.style.color = 'var(--cyan)';
+            btn.textContent = '⚠️ ' + (d.error || 'Erro no microfone');
+          }
+        } catch (e) { isRecordingMic = false; }
+      } else {
+        isRecordingMic = false;
+        btn.style.borderColor = 'var(--amber)';
+        btn.style.color = 'var(--amber)';
+        btn.textContent = '⏳ TRANSCREVENDO OFFLINE...';
+        try {
+          const r = await apiFetch('/api/record_stop', { method: 'POST' });
+          const d = await r.json();
+          btn.style.borderColor = 'var(--cyan)';
+          btn.style.color = 'var(--cyan)';
+          btn.textContent = '🎙️ GRAVAR MICROFONE (TRANSCRIÇÃO OFFLINE)';
+          if (d.ok && d.text) {
+            document.getElementById('miniText').value = d.text;
+            document.getElementById('captionBar').textContent = 'Transcrito offline: ' + d.text;
+          } else if (d.error) {
+            document.getElementById('captionBar').textContent = d.error;
+          }
+        } catch (e) {
+          btn.textContent = '🎙️ GRAVAR MICROFONE (TRANSCRIÇÃO OFFLINE)';
+        }
+      }
+    }
+
+    async function narrateBatch() {
+      const txt = document.getElementById('batchText').value.trim();
+      if (!txt) return;
+      document.getElementById('captionBar').textContent = 'Enfileirando narração em lote...';
+      await apiFetch('/api/narrate_batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: txt })
       });
     }
 
@@ -842,6 +910,12 @@
       const pKilo = document.getElementById('pillKilo');
       pKilo.className = 'q-pill' + (stateCache.auto_read_kilo !== false ? ' on-niko' : '');
       pKilo.textContent = stateCache.auto_read_kilo !== false ? '🤖 NIKO: ON' : '🤖 NIKO: OFF';
+
+      const pOff = document.getElementById('pillOffline');
+      if (pOff) {
+        pOff.className = 'q-pill' + (stateCache.offline_mode ? ' on' : '');
+        pOff.textContent = stateCache.offline_mode ? '📡 OFFLINE: ON' : '📡 OFFLINE: OFF';
+      }
 
       const pClip = document.getElementById('pillClip');
       pClip.className = 'q-pill' + (stateCache.clipboard_watch ? ' on' : '');
