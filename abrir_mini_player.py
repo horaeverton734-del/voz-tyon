@@ -75,10 +75,10 @@ def lock_mini_player_topmost(pinned: bool = True):
 def main():
     ensure_voice_daemon_running()
     exe = find_edge_or_chrome()
-    # Usa /index.html?popup=1 para bater direto no arquivo na nuvem sem cair em 404 de barra
-    url = "https://voz-tyon.onrender.com/index.html?popup=1"
-    if "--local" in sys.argv:
-        url = "http://localhost:8090/index.html?popup=1"
+    # Usa o servidor local (127.0.0.1:8090) por padrao para controle 100% direto sem bloqueio HTTPS->HTTP do navegador
+    url = "http://127.0.0.1:8090/index.html?popup=1"
+    if "--cloud" in sys.argv:
+        url = "https://voz-tyon.onrender.com/index.html?popup=1"
 
     profile_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mini_profile_cloud")
     os.makedirs(profile_dir, exist_ok=True)
