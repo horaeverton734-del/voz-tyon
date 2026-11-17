@@ -23,10 +23,11 @@ STATE_FILE = os.path.join(BASE_DIR, "device_state.json")
 os.makedirs(AUDIO_DIR, exist_ok=True)
 os.makedirs(OFFLINE_MODELS_DIR, exist_ok=True)
 
-# Estado global do Dispositivo de Voz cook45 + Niko (Kilo Code)
+# Estado global do Dispositivo de Voz cook45 + Niko (Kilo Code) + Agente PC
 DEVICE_STATE = {
     "enabled": True,
     "offline_mode": False,
+    "pc_control": True,
     "auto_read_chat": True,
     "auto_read_kilo": True,
     "clipboard_watch": False,
@@ -55,7 +56,7 @@ def load_persisted_state():
             with open(STATE_FILE, "r", encoding="utf-8") as f:
                 saved = json.load(f)
             for k in (
-                "enabled", "offline_mode", "auto_read_chat", "auto_read_kilo", "clipboard_watch",
+                "enabled", "offline_mode", "pc_control", "auto_read_chat", "auto_read_kilo", "clipboard_watch",
                 "voice", "offline_voice", "rate", "pitch",
                 "kilo_voice", "offline_kilo_voice", "kilo_rate", "kilo_pitch", "volume"
             ):
@@ -68,7 +69,7 @@ def save_persisted_state():
     try:
         data = {
             k: DEVICE_STATE[k] for k in (
-                "enabled", "offline_mode", "auto_read_chat", "auto_read_kilo", "clipboard_watch",
+                "enabled", "offline_mode", "pc_control", "auto_read_chat", "auto_read_kilo", "clipboard_watch",
                 "voice", "offline_voice", "rate", "pitch",
                 "kilo_voice", "offline_kilo_voice", "kilo_rate", "kilo_pitch", "volume"
             )
@@ -677,6 +678,43 @@ class VoiceDaemonHandler(BaseHTTPRequestHandler):
                 "queue_size": len(SPEECH_QUEUE),
                 "player_connected": True
             })
+        elif parsed.path == "/api/pc/search":
+            if not DEVICE_STATE.get("pc_control", True):
+                return self._send_json({"ok": False, "error": "Controle do PC bloqueado no painel"}, 403)
+            qs = parse_qs(parsed.query)
+            q = (qs.get("q", [""])[0]).lower().strip()
+            ftype = (qs.get("type", ["all"])[0]).lower().strip()
+            ext_map = {
+                "music": (".mp3", ".wav", ".flac", ".m4a", ".ogg", ".wma"),
+                "image": (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"),
+                "video": (".mp4", ".mkv", ".avi", ".mov", ".webm"),
+            }
+            allowed_exts = ext_map.get(ftype)
+            folders = [
+                os.path.expanduser(r"~\Music"),
+                os.path.expanduser(r"~\Pictures"),
+                os.path.expanduser(r"~\Videos"),
+                os.path.expanduser(r"~\Downloads"),
+                os.path.expanduser(r"~\Desktop"),
+                os.path.expanduser(r"~\Documents"),
+            ]
+            matches = []
+            for base_f in folders:
+                if not os.path.isdir(base_f):
+                    continue
+                for root, _, files in os.walk(base_f):
+                    for fn in files:
+                        if allowed_exts and not fn.lower().endswith(allowed_exts):
+                            continue
+                        if q and q not in fn.lower():
+                            continue
+                        matches.append(os.path.join(root, fn))
+                        if len(matches) >= 50:
+                            break
+                    if len(matches) >= 50:
+                        break
+            return self._send_json({"ok": True, "files": matches})
+
         elif parsed.path.startswith("/audio/"):
             fname = os.path.basename(parsed.path)
             fpath = os.path.join(AUDIO_DIR, fname)
@@ -721,7 +759,7 @@ class VoiceDaemonHandler(BaseHTTPRequestHandler):
 
         elif parsed.path == "/api/config":
             for k in (
-                "enabled", "offline_mode", "auto_read_chat", "auto_read_kilo", "clipboard_watch",
+                "enabled", "offline_mode", "pc_control", "auto_read_chat", "auto_read_kilo", "clipboard_watch",
                 "voice", "offline_voice", "rate", "pitch",
                 "kilo_voice", "offline_kilo_voice", "kilo_rate", "kilo_pitch", "volume"
             ):
@@ -778,6 +816,18 @@ class VoiceDaemonHandler(BaseHTTPRequestHandler):
                 return self._send_json({"ok": True, "text": transcript})
             except Exception as e:
                 DEVICE_STATE["recording"] = False
+                return self._send_json({"ok": False, "error": str(e)}, 500)
+
+        elif parsed.path == "/api/pc/open":
+            if not DEVICE_STATE.get("pc_control", True):
+                return self._send_json({"ok": False, "error": "Controle do PC bloqueado no painel"}, 403)
+            target = (payload.get("target") or "").strip()
+            if not target:
+                return self._send_json({"ok": False, "error": "Alvo vazio"}, 400)
+            try:
+                os.startfile(target)
+                return self._send_json({"ok": True, "opened": target})
+            except Exception as e:
                 return self._send_json({"ok": False, "error": str(e)}, 500)
 
         elif parsed.path == "/api/narrate_batch":

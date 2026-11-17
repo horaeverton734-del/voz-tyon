@@ -550,15 +550,18 @@
       </div>
 
       <!-- Chaves Rápidas -->
-      <div class="quick-toggles">
+      <div class="quick-toggles" style="grid-template-columns: repeat(5, 1fr);">
         <div id="pillChat" class="q-pill on" onclick="toggleFlag('auto_read_chat')">
-          💬 COOK: ON
+          💬 COOK
         </div>
         <div id="pillKilo" class="q-pill on-niko" onclick="toggleFlag('auto_read_kilo')">
-          🤖 NIKO: ON
+          🤖 NIKO
         </div>
         <div id="pillOffline" class="q-pill" onclick="toggleFlag('offline_mode')">
-          📡 OFFLINE: OFF
+          📡 OFFLINE
+        </div>
+        <div id="pillPc" class="q-pill on" onclick="toggleFlag('pc_control')">
+          🖥️ PC: ON
         </div>
         <div id="pillClip" class="q-pill" onclick="toggleFlag('clipboard_watch')">
           📋 CTRL+C
@@ -905,21 +908,27 @@
 
       const pChat = document.getElementById('pillChat');
       pChat.className = 'q-pill' + (stateCache.auto_read_chat ? ' on' : '');
-      pChat.textContent = stateCache.auto_read_chat ? '💬 COOK: ON' : '💬 COOK: OFF';
+      pChat.textContent = stateCache.auto_read_chat ? '💬 COOK' : '💬 OFF';
 
       const pKilo = document.getElementById('pillKilo');
       pKilo.className = 'q-pill' + (stateCache.auto_read_kilo !== false ? ' on-niko' : '');
-      pKilo.textContent = stateCache.auto_read_kilo !== false ? '🤖 NIKO: ON' : '🤖 NIKO: OFF';
+      pKilo.textContent = stateCache.auto_read_kilo !== false ? '🤖 NIKO' : '🤖 OFF';
 
       const pOff = document.getElementById('pillOffline');
       if (pOff) {
         pOff.className = 'q-pill' + (stateCache.offline_mode ? ' on' : '');
-        pOff.textContent = stateCache.offline_mode ? '📡 OFFLINE: ON' : '📡 OFFLINE: OFF';
+        pOff.textContent = stateCache.offline_mode ? '📡 OFF:ON' : '📡 OFFLINE';
+      }
+
+      const pPc = document.getElementById('pillPc');
+      if (pPc) {
+        pPc.className = 'q-pill' + (stateCache.pc_control !== false ? ' on' : '');
+        pPc.textContent = stateCache.pc_control !== false ? '🖥️ PC: ON' : '🔒 PC: OFF';
       }
 
       const pClip = document.getElementById('pillClip');
       pClip.className = 'q-pill' + (stateCache.clipboard_watch ? ' on' : '');
-      pClip.textContent = stateCache.clipboard_watch ? '📋 CTRL+C: ON' : '📋 CTRL+C';
+      pClip.textContent = stateCache.clipboard_watch ? '📋 C+C:ON' : '📋 CTRL+C';
     }
 
     async function pushConfig() {
