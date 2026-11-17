@@ -146,9 +146,13 @@ def mci_send(cmd: str) -> str:
     err = winmm.mciSendStringW(cmd, buf, 512, 0)
     return buf.value
 
+MUSIC_STOP_FLAG = False
+MUSIC_THREAD = None
+
 def stop_audio_playback():
-    global STOP_REQUESTED
+    global STOP_REQUESTED, MUSIC_STOP_FLAG
     STOP_REQUESTED = True
+    MUSIC_STOP_FLAG = True
     try:
         mci_send("stop cook45_voice")
         mci_send("close cook45_voice")
@@ -159,16 +163,47 @@ def stop_audio_playback():
     DEVICE_STATE["speaking"] = False
 
 def play_music_winmm(filepath: str, volume: int = 85):
-    """Toca musica direto via winmm.dll (alias separado cook45_music, zero lag e sem depender de app UWP)."""
+    """Toca qualquer formato de musica direto via PyAV + sounddevice em thread dedicada (zero lag)."""
+    global MUSIC_STOP_FLAG, MUSIC_THREAD
+    MUSIC_STOP_FLAG = True
+    time.sleep(0.08)
+    MUSIC_STOP_FLAG = False
+
     abs_path = os.path.abspath(filepath)
-    mci_send("stop cook45_music")
-    mci_send("close cook45_music")
-    res = winmm.mciSendStringW(f'open "{abs_path}" type mpegvideo alias cook45_music', None, 0, 0)
-    if res != 0:
+    if not os.path.exists(abs_path):
         return False
-    mci_vol = max(0, min(1000, int(volume * 10)))
-    mci_send(f"setaudio cook45_music volume to {mci_vol}")
-    mci_send("play cook45_music")
+
+    def _music_worker():
+        global MUSIC_STOP_FLAG
+        try:
+            import av
+            import numpy as np
+            import sounddevice as sd
+
+            container = av.open(abs_path)
+            audio_stream = container.streams.audio[0]
+            rate = audio_stream.rate or 44100
+            channels = audio_stream.channels or 2
+            resampler = av.AudioResampler(format="flt", layout="stereo" if channels >= 2 else "mono", rate=rate)
+
+            with sd.OutputStream(samplerate=rate, channels=2 if channels >= 2 else 1, dtype="float32") as out_stream:
+                for frame in container.decode(audio=0):
+                    if MUSIC_STOP_FLAG:
+                        break
+                    for resampled in resampler.resample(frame):
+                        if MUSIC_STOP_FLAG:
+                            break
+                        arr = resampled.to_ndarray()
+                        if arr.ndim == 2:
+                            arr = arr.T
+                        vol_gain = max(0.0, min(1.0, DEVICE_STATE.get("volume", volume) / 100.0))
+                        out_stream.write(np.ascontiguousarray(arr * vol_gain, dtype=np.float32))
+            container.close()
+        except Exception as e:
+            print(f"[ERR] Falha ao tocar musica: {e}")
+
+    MUSIC_THREAD = threading.Thread(target=_music_worker, daemon=True)
+    MUSIC_THREAD.start()
     return True
 
 def play_mp3_winmm(filepath: str, volume: int = 100):
