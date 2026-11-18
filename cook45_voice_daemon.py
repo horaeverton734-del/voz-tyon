@@ -25,7 +25,7 @@ os.makedirs(OFFLINE_MODELS_DIR, exist_ok=True)
 
 # Estado global do Dispositivo de Voz cook45 + Niko (Kilo Code) + Agente PC
 DEVICE_STATE = {
-    "enabled": True,
+    "enabled": False,
     "offline_mode": False,
     "pc_control": True,
     "auto_read_chat": True,
@@ -58,7 +58,7 @@ def load_persisted_state():
             with open(STATE_FILE, "r", encoding="utf-8") as f:
                 saved = json.load(f)
             for k in (
-                "enabled", "offline_mode", "pc_control", "auto_read_chat", "auto_read_kilo", "clipboard_watch",
+                "offline_mode", "pc_control", "auto_read_chat", "auto_read_kilo", "clipboard_watch",
                 "voice", "offline_voice", "rate", "pitch",
                 "kilo_voice", "offline_kilo_voice", "kilo_rate", "kilo_pitch", "volume"
             ):
@@ -66,6 +66,8 @@ def load_persisted_state():
                     DEVICE_STATE[k] = saved[k]
         except Exception:
             pass
+    # Sempre inicia com o Play DESLIGADO por seguranca — so fala quando voce abrir o Media Player e ligar o Play
+    DEVICE_STATE["enabled"] = False
 
 def save_persisted_state():
     try:
@@ -98,8 +100,8 @@ STOP_REQUESTED = False
 LAST_UI_HEARTBEAT = 0.0
 
 def has_active_player() -> bool:
-    """So permite reproducao automatica se houver um Mini-Player aberto na tela (heartbeat nos ultimos 5s)."""
-    return (time.time() - LAST_UI_HEARTBEAT) <= 5.0
+    """So permite reproducao automatica se houver um Mini-Player ativo enviando heartbeat nos ultimos 3s."""
+    return (time.time() - LAST_UI_HEARTBEAT) <= 3.0
 
 # Win32 MCI API direto no kernel/subsistema multimídia (winmm.dll)
 winmm = ctypes.windll.winmm
@@ -765,12 +767,14 @@ class VoiceDaemonHandler(BaseHTTPRequestHandler):
         global LAST_UI_HEARTBEAT
         parsed = urlparse(self.path)
         if parsed.path == "/api/state":
-            LAST_UI_HEARTBEAT = time.time()
+            qs = parse_qs(parsed.query)
+            if qs.get("hb", ["0"])[0] == "1":
+                LAST_UI_HEARTBEAT = time.time()
             self._send_json({
                 "state": DEVICE_STATE,
                 "voices": AVAILABLE_VOICES,
                 "queue_size": len(SPEECH_QUEUE),
-                "player_connected": True
+                "player_connected": has_active_player()
             })
         elif parsed.path == "/api/pc/search":
             if not DEVICE_STATE.get("pc_control", True):
@@ -947,11 +951,28 @@ class VoiceDaemonHandler(BaseHTTPRequestHandler):
             if not target:
                 return self._send_json({"ok": False, "error": "Alvo vazio"}, 400)
             try:
-                if target.lower().endswith((".mp3", ".wav", ".wma", ".m4a")):
-                    if play_music_winmm(target, DEVICE_STATE.get("volume", 90)):
-                        return self._send_json({"ok": True, "opened": target, "player": "winmm_direct"})
+                import subprocess
+                if target.lower().startswith(("http://", "https://")):
+                    chrome_candidates = [
+                        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                    ]
+                    for cp in chrome_candidates:
+                        if os.path.exists(cp):
+                            subprocess.Popen([cp, target])
+                            return self._send_json({"ok": True, "opened": target, "app": "chrome"})
+                if target.lower().endswith((".mp3", ".wav", ".flac", ".m4a", ".ogg", ".wma", ".mp4", ".mkv")):
+                    vlc_path = r"C:\Program Files\VideoLAN\VLC\vlc.exe"
+                    if os.path.exists(vlc_path):
+                        subprocess.run(["taskkill", "/F", "/IM", "vlc.exe"], capture_output=True)
+                        subprocess.Popen([vlc_path, target])
+                        return self._send_json({"ok": True, "opened": target, "app": "vlc"})
+                    wmp_path = r"C:\Program Files\Windows Media Player\wmplayer.exe"
+                    if os.path.exists(wmp_path):
+                        subprocess.Popen([wmp_path, target])
+                        return self._send_json({"ok": True, "opened": target, "app": "wmplayer"})
                 os.startfile(target)
-                return self._send_json({"ok": True, "opened": target})
+                return self._send_json({"ok": True, "opened": target, "app": "os.startfile"})
             except Exception as e:
                 return self._send_json({"ok": False, "error": str(e)}, 500)
 

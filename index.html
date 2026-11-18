@@ -533,22 +533,6 @@
         ▶ PLAY LIGADO — ÁUDIO ATIVO
       </button>
 
-      <!-- Barra de Controle de Música (Aparece/Controla Músicas do PC direto no Player) -->
-      <div id="musicControlsBar" class="transport-bar" style="margin-bottom:6px;">
-        <button class="t-btn" onclick="musicPrev()" title="Música anterior">
-          ⏮ ANT.
-        </button>
-        <button id="btnMusicPause" class="t-btn" style="border-color:var(--amber); color:var(--amber);" onclick="musicPause()">
-          ⏯ PAUSAR MÚSICA
-        </button>
-        <button class="t-btn" onclick="musicNext()" title="Próxima música">
-          ⏭ PRÓX.
-        </button>
-        <button class="t-btn stop" onclick="stopAudio()" title="Parar música e fala">
-          ⏹ PARAR
-        </button>
-      </div>
-
       <!-- Botões Principais estilo Media Player -->
       <div class="transport-bar">
         <button class="t-btn play" onclick="readLast()">
@@ -1025,7 +1009,9 @@
 
     async function poll() {
       try {
-        const res = await apiFetch('/api/state');
+        const isMiniApp = (window.innerWidth <= 450 || location.search.includes('popup=1'));
+        const hbParam = (isMiniApp && stateCache.enabled) ? '?hb=1' : '';
+        const res = await apiFetch('/api/state' + hbParam);
         const data = await res.json();
         const st = data.state;
         stateCache = st;

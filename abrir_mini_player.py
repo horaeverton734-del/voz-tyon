@@ -26,7 +26,14 @@ def ensure_voice_daemon_running():
             creationflags=DETACHED_PROCESS | CREATE_NO_WINDOW,
             close_fds=True
         )
-        time.sleep(1.5)
+        # Aguarda ate 8 segundos para garantir que 18090 e 8091 estejam respondendo antes de abrir a janela
+        for _ in range(32):
+            time.sleep(0.25)
+            try:
+                urllib.request.urlopen("http://127.0.0.1:18090/api/state", timeout=0.8).read()
+                break
+            except Exception:
+                pass
 
 def find_edge_or_chrome():
     # Prioriza Microsoft Edge para rodar em processo 100% separado do Chrome principal do clack
@@ -75,8 +82,8 @@ def lock_mini_player_topmost(pinned: bool = True):
 def main():
     ensure_voice_daemon_running()
     exe = find_edge_or_chrome()
-    # Usa o servidor local (127.0.0.1:8090) por padrao para controle 100% direto sem bloqueio HTTPS->HTTP do navegador
-    url = "http://127.0.0.1:8090/index.html?popup=1"
+    # Usa o servidor local (127.0.0.1:18090) livre de conflito com o Wondershare na porta 8090
+    url = "http://127.0.0.1:18090/index.html?popup=1"
     if "--cloud" in sys.argv:
         url = "https://voz-tyon.onrender.com/index.html?popup=1"
 
@@ -90,6 +97,7 @@ def main():
 
     args = [
         exe,
+        "--new-window",
         f"--app={url}",
         f"--user-data-dir={profile_dir}",
         f"--window-size={width},{height}",

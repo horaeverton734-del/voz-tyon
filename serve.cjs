@@ -3,7 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-const PORT = process.env.PORT || 8090;
+const PORT = process.env.PORT || 18090;
+const HOST = process.env.PORT ? '0.0.0.0' : '127.0.0.1';
 const DAEMON_PORT = process.env.VOICE_DAEMON_PORT || 8091;
 
 // Estado em memória na nuvem (Render) para receber sync do PC do clack ou comandos web
@@ -189,6 +190,6 @@ server.on('error', (err) => {
   throw err;
 });
 
-server.listen(PORT, () => {
-  console.log(`[TYON-V45] Painel do Dispositivo de Voz cook45 rodando em http://localhost:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`[TYON-V45] Painel do Dispositivo de Voz cook45 rodando em http://${HOST}:${PORT}`);
 });
