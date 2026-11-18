@@ -434,29 +434,39 @@ def enqueue_speech(
     if not cleaned:
         return None
 
-    item_id = hashlib.md5(f"{time.time()}_{cleaned[:60]}".encode("utf-8")).hexdigest()[:10]
-    filename = f"cook45_{item_id}.mp3"
-    filepath = os.path.join(AUDIO_DIR, filename)
+    # Fatiamento inteligente da 1a frase: comeca a falar em ~0.3s sem esperar o texto inteiro
+    parts = [cleaned]
+    if len(cleaned) > 150:
+        m = re.search(r"^(.{25,180}?[.!?])\s+(.+)$", cleaned)
+        if m:
+            parts = [m.group(1).strip(), m.group(2).strip()]
 
-    entry = {
-        "id": item_id,
-        "timestamp": time.strftime("%H:%M:%S"),
-        "source": source_label,
-        "raw_text": raw_text[:1500],
-        "clean_text": cleaned,
-        "voice": voice_override or DEVICE_STATE["voice"],
-        "rate": rate_override or DEVICE_STATE["rate"],
-        "pitch": pitch_override or DEVICE_STATE["pitch"],
-        "audio_file": filepath,
-        "audio_url": f"/audio/{filename}",
-        "play_on_host": play_on_host,
-        "ready": False
-    }
+    first_entry = None
+    for idx, part_text in enumerate(parts):
+        item_id = hashlib.md5(f"{time.time()}_{idx}_{part_text[:40]}".encode("utf-8")).hexdigest()[:10]
+        filename = f"cook45_{item_id}.mp3"
+        filepath = os.path.join(AUDIO_DIR, filename)
 
-    with QUEUE_LOCK:
-        SPEECH_QUEUE.append(entry)
+        entry = {
+            "id": item_id,
+            "timestamp": time.strftime("%H:%M:%S"),
+            "source": source_label,
+            "raw_text": raw_text[:1500] if idx == 0 else "",
+            "clean_text": part_text,
+            "voice": voice_override or DEVICE_STATE["voice"],
+            "rate": rate_override or DEVICE_STATE["rate"],
+            "pitch": pitch_override or DEVICE_STATE["pitch"],
+            "audio_file": filepath,
+            "audio_url": f"/audio/{filename}",
+            "play_on_host": play_on_host,
+            "ready": False
+        }
+        with QUEUE_LOCK:
+            SPEECH_QUEUE.append(entry)
+        if first_entry is None:
+            first_entry = entry
 
-    return entry
+    return first_entry
 
 def speech_worker_loop():
     """Worker dedicado que sintetiza e reproduz a fila de voz do cook45."""
@@ -470,7 +480,7 @@ def speech_worker_loop():
                 entry = SPEECH_QUEUE.pop(0)
 
         if not entry:
-            time.sleep(0.1)
+            time.sleep(0.03)
             continue
 
         try:
@@ -633,7 +643,7 @@ def transcript_watcher_loop():
         except Exception as e:
             print(f"[WARN] Erro no watcher: {e}")
 
-        time.sleep(0.30)
+        time.sleep(0.12)
 
 def get_latest_kilo_parts(limit: int = 12):
     """Lê os últimos blocos de resposta do assistente no banco SQLite do Kilo Code (kilo.db)."""
