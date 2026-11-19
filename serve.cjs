@@ -32,14 +32,16 @@ function startLocalVoiceDaemon() {
   const daemonPath = path.join(__dirname, 'cook45_voice_daemon.py');
   if (!fs.existsSync(daemonPath)) return;
 
+  const py314w = 'C:\\Users\\SEJUC\\AppData\\Local\\Programs\\Python\\Python314\\pythonw.exe';
   const py314 = 'C:\\Users\\SEJUC\\AppData\\Local\\Programs\\Python\\Python314\\python.exe';
-  const pyBin = fs.existsSync(py314) ? py314 : 'python';
+  const pyBin = fs.existsSync(py314w) ? py314w : (fs.existsSync(py314) ? py314 : 'pythonw');
 
   console.log(`[SERVE] Iniciando motor de voz cook45 com: ${pyBin}`);
   daemonProc = spawn(pyBin, [daemonPath], {
     cwd: __dirname,
     env: { ...process.env, VOICE_DAEMON_PORT: String(DAEMON_PORT), PYTHONIOENCODING: 'utf-8' },
-    stdio: 'inherit'
+    windowsHide: true,
+    stdio: 'ignore'
   });
 
   daemonProc.on('exit', (code) => {

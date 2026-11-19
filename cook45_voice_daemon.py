@@ -275,7 +275,7 @@ def play_mp3_winmm(filepath: str, volume: int = 100):
             status = mci_send("status cook45_voice mode")
             if status not in ("playing", "seeking"):
                 break
-            time.sleep(0.06)
+            time.sleep(0.025)
         mci_send("stop cook45_voice")
         mci_send("close cook45_voice")
         return True
@@ -422,6 +422,80 @@ def fallback_sapi_speak(text: str):
     except Exception as e:
         print(f"[ERR] Fallback SAPI falhou: {e}")
 
+def _cut_chunk_at_boundary(text: str, max_len: int, min_len: int = 25) -> tuple[str, str]:
+    """Corta texto respeitando pontuacao ou espaco ate max_len."""
+    if len(text) <= max_len:
+        return text, ""
+    window = text[:max_len]
+    # Prefere fim de frase (.!?)
+    m_end = list(re.finditer(r"[.!?](?:\s+|$)", window))
+    for m in reversed(m_end):
+        if m.end() >= min_len:
+            pos = m.end()
+            return text[:pos].strip(), text[pos:].strip()
+    # Senao prefere pausa (,;:)
+    m_pause = list(re.finditer(r"[,;:](?:\s+|$)", window))
+    for m in reversed(m_pause):
+        if m.end() >= min_len:
+            pos = m.end()
+            return text[:pos].strip(), text[pos:].strip()
+    # Senao corta no ultimo espaco
+    sp = window.rfind(" ")
+    if sp >= min_len:
+        return text[:sp].strip(), text[sp:].strip()
+    return window.strip(), text[max_len:].strip()
+
+def split_speech_chunks(cleaned: str) -> list[str]:
+    """Fatia texto longo: 1o chunk ultra-curto (~110 chars) para arranque imediato + chunks medios (~260 chars)."""
+    if len(cleaned) <= 115:
+        return [cleaned]
+
+    chunks = []
+    first, rest = _cut_chunk_at_boundary(cleaned, max_len=110, min_len=24)
+    if first:
+        chunks.append(first)
+
+    # Quebra o restante em sentencas e agrupa ate ~260 chars por chunk
+    sentences = re.split(r"(?<=[.!?])\s+", rest) if rest else []
+    buf = ""
+    for sent in sentences:
+        sent = sent.strip()
+        if not sent:
+            continue
+        if len(sent) > 300:
+            if buf:
+                chunks.append(buf)
+                buf = ""
+            rem = sent
+            while len(rem) > 280:
+                piece, rem = _cut_chunk_at_boundary(rem, max_len=260, min_len=80)
+                if piece:
+                    chunks.append(piece)
+            if rem:
+                buf = rem
+            continue
+        if not buf:
+            buf = sent
+        elif len(buf) + 1 + len(sent) <= 260:
+            buf = f"{buf} {sent}"
+        else:
+            chunks.append(buf)
+            buf = sent
+    if buf:
+        chunks.append(buf)
+    return chunks or [cleaned]
+
+SYNTH_META = {}
+SYNTH_META_LOCK = threading.Lock()
+
+def _get_synth_meta(item_id: str) -> dict:
+    with SYNTH_META_LOCK:
+        meta = SYNTH_META.get(item_id)
+        if meta is None:
+            meta = {"started": False, "done": threading.Event(), "lock": threading.Lock()}
+            SYNTH_META[item_id] = meta
+        return meta
+
 def enqueue_speech(
     raw_text: str,
     source_label: str = "chat",
@@ -434,12 +508,7 @@ def enqueue_speech(
     if not cleaned:
         return None
 
-    # Fatiamento inteligente da 1a frase: comeca a falar em ~0.3s sem esperar o texto inteiro
-    parts = [cleaned]
-    if len(cleaned) > 150:
-        m = re.search(r"^(.{25,180}?[.!?])\s+(.+)$", cleaned)
-        if m:
-            parts = [m.group(1).strip(), m.group(2).strip()]
+    parts = split_speech_chunks(cleaned)
 
     first_entry = None
     for idx, part_text in enumerate(parts):
@@ -461,6 +530,7 @@ def enqueue_speech(
             "play_on_host": play_on_host,
             "ready": False
         }
+        _get_synth_meta(item_id)
         with QUEUE_LOCK:
             SPEECH_QUEUE.append(entry)
         if first_entry is None:
@@ -468,33 +538,25 @@ def enqueue_speech(
 
     return first_entry
 
-def speech_worker_loop():
-    """Worker dedicado que sintetiza e reproduz a fila de voz do cook45."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    while True:
-        entry = None
-        with QUEUE_LOCK:
-            if SPEECH_QUEUE:
-                entry = SPEECH_QUEUE.pop(0)
-
-        if not entry:
-            time.sleep(0.03)
-            continue
-
+def _synthesize_entry(entry: dict, allow_sapi_fallback: bool = True):
+    """Sintetiza um chunk de forma thread-safe e idempotente (suporta prefetch paralelo)."""
+    meta = _get_synth_meta(entry["id"])
+    with meta["lock"]:
+        if meta["done"].is_set():
+            return
+        meta["started"] = True
         try:
-            DEVICE_STATE["speaking"] = True
-            DEVICE_STATE["current_text"] = entry["clean_text"]
-            print(f"\n[VOZ COOK45] ({entry['source']}) Sintetizando: {entry['clean_text'][:90]}...")
-
             use_offline = bool(DEVICE_STATE.get("offline_mode", False))
             is_niko = "Niko" in entry.get("source", "")
-            offline_model = DEVICE_STATE.get("offline_kilo_voice", "pt_BR-cadu-medium.onnx") if is_niko else DEVICE_STATE.get("offline_voice", "pt_BR-faber-medium.onnx")
+            offline_model = (
+                DEVICE_STATE.get("offline_kilo_voice", "pt_BR-cadu-medium.onnx")
+                if is_niko
+                else DEVICE_STATE.get("offline_voice", "pt_BR-faber-medium.onnx")
+            )
 
             if not use_offline:
                 try:
-                    loop.run_until_complete(
+                    asyncio.run(
                         synthesize_edge_tts(
                             entry["clean_text"],
                             entry["voice"],
@@ -510,7 +572,7 @@ def speech_worker_loop():
                     print(f"[WARN] Sem internet ou falha no edge-tts ({e}), chaveando para Piper ONNX 100% Offline...")
                     use_offline = True
 
-            if use_offline:
+            if use_offline and not entry["ready"]:
                 try:
                     wav_path = entry["audio_file"].rsplit(".", 1)[0] + ".wav"
                     wav_url = entry["audio_url"].rsplit(".", 1)[0] + ".wav"
@@ -523,8 +585,51 @@ def speech_worker_loop():
                 except Exception as e2:
                     print(f"[WARN] Falha no Piper ({e2}), acionando SAPI5 local...")
                     DEVICE_STATE["engine"] = "Windows SAPI5 (Offline)"
-                    if entry.get("play_on_host", True) and DEVICE_STATE["enabled"]:
+                    if allow_sapi_fallback and entry.get("play_on_host", True) and DEVICE_STATE["enabled"]:
                         fallback_sapi_speak(entry["clean_text"])
+        finally:
+            meta["done"].set()
+
+def _schedule_prefetch(max_ahead: int = 2):
+    """Pre-sintetiza os proximos chunks da fila em paralelo enquanto o atual esta tocando."""
+    to_prefetch = []
+    with QUEUE_LOCK:
+        for item in SPEECH_QUEUE[:max_ahead]:
+            meta = _get_synth_meta(item["id"])
+            if not meta["started"] and not meta["done"].is_set():
+                meta["started"] = True
+                to_prefetch.append(item)
+    for item in to_prefetch:
+        threading.Thread(target=_synthesize_entry, args=(item, False), daemon=True).start()
+
+def speech_worker_loop():
+    """Worker dedicado que sintetiza (com prefetch paralelo) e reproduz a fila de voz do cook45."""
+    while True:
+        entry = None
+        with QUEUE_LOCK:
+            if SPEECH_QUEUE:
+                entry = SPEECH_QUEUE.pop(0)
+
+        if not entry:
+            time.sleep(0.02)
+            continue
+
+        try:
+            DEVICE_STATE["speaking"] = True
+            DEVICE_STATE["current_text"] = entry["clean_text"]
+            print(f"\n[VOZ COOK45] ({entry['source']}) Preparando: {entry['clean_text'][:90]}...")
+
+            # Dispara pre-sintese dos proximos chunks em paralelo ANTES mesmo de terminar o atual
+            _schedule_prefetch(max_ahead=2)
+
+            meta = _get_synth_meta(entry["id"])
+            if not meta["done"].is_set():
+                _synthesize_entry(entry, allow_sapi_fallback=True)
+            else:
+                meta["done"].wait(timeout=15.0)
+
+            # Garante prefetch atualizado enquanto este chunk toca
+            _schedule_prefetch(max_ahead=2)
 
             # Adiciona ao histórico
             hist_item = {
@@ -546,6 +651,8 @@ def speech_worker_loop():
         except Exception as e:
             print(f"[ERR] Erro no worker de voz: {e}")
         finally:
+            with SYNTH_META_LOCK:
+                SYNTH_META.pop(entry["id"], None)
             DEVICE_STATE["speaking"] = False
             DEVICE_STATE["current_text"] = ""
 
@@ -603,9 +710,17 @@ def transcript_watcher_loop():
 
     print(f"[WATCHER] Monitorando todas as janelas do Antigravity ({len(file_offsets)} conversas indexadas).")
 
+    cached_files = get_latest_transcript_files(limit=15)
+    last_scan = time.time()
+
     while True:
         try:
-            for tfile in get_latest_transcript_files(limit=15):
+            now = time.time()
+            if now - last_scan >= 1.5:
+                cached_files = get_latest_transcript_files(limit=15)
+                last_scan = now
+
+            for tfile in cached_files:
                 conv_dir = os.path.dirname(tfile)
                 conv_id = os.path.basename(os.path.dirname(os.path.dirname(conv_dir)))
                 fsize = os.path.getsize(tfile) if os.path.exists(tfile) else 0
@@ -643,7 +758,7 @@ def transcript_watcher_loop():
         except Exception as e:
             print(f"[WARN] Erro no watcher: {e}")
 
-        time.sleep(0.12)
+        time.sleep(0.05)
 
 def get_latest_kilo_parts(limit: int = 12):
     """Lê os últimos blocos de resposta do assistente no banco SQLite do Kilo Code (kilo.db)."""
